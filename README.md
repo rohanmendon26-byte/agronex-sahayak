@@ -374,8 +374,6 @@ Test evidence and screenshots are maintained as part of the Evaluation 2 submiss
 
 **YouTube Link:** `https://youtu.be/fq3BohuEsoA`
 
-Replace `(https://youtu.be/fq3BohuEsoA)` with the final YouTube video URL after uploading the demonstration.
-Replace `https://youtu.be/fq3BohuEsoA` with the final YouTube video URL after uploading the demonstration.
 
 ---
 
