@@ -368,13 +368,14 @@ Test evidence and screenshots are maintained as part of the Evaluation 2 submiss
 ### YouTube Video
 
 **Evaluation 2 Backend Demonstration:**
-[▶️ Watch the 3-Minute Demonstration](YOUTUBE_LINK_HERE)
+[▶️ Watch the 3-Minute Demonstration](https://youtu.be/fq3BohuEsoA)
 
 > The demonstration covers the proposed functionality, implemented backend features, API workflow, database interaction, and differences between the Evaluation 1 proposal and the current implementation.
 
-**YouTube Link:** `YOUTUBE_LINK_HERE`
+**YouTube Link:** `https://youtu.be/fq3BohuEsoA`
 
-Replace `YOUTUBE_LINK_HERE` with the final YouTube video URL after uploading the demonstration.
+Replace `(https://youtu.be/fq3BohuEsoA)` with the final YouTube video URL after uploading the demonstration.
+Replace `https://youtu.be/fq3BohuEsoA` with the final YouTube video URL after uploading the demonstration.
 
 ---
 
