@@ -1,430 +1,256 @@
-# AgroNex Sahayak — Backend
+# AgroNex Sahayak
 
-> A backend platform for community assistance, connecting senior citizens with verified volunteers under police administration.
+> A secure community assistance platform connecting senior citizens with verified volunteers under police administration.
 
-[![Node.js](https://img.shields.io/badge/Node.js-22.x-green)](https://nodejs.org/)
-[![Express](https://img.shields.io/badge/Express-5.x-lightgrey)](https://expressjs.com/)
-[![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-green)](https://www.mongodb.com/atlas)
-[![JWT](https://img.shields.io/badge/Auth-JWT-blue)](https://jwt.io/)
+<p align="center">
+  <img src="https://img.shields.io/badge/status-Evaluation%202-1f6feb?style=for-the-badge" alt="Project status: Evaluation 2">
+  <img src="https://img.shields.io/badge/Node.js-22.x-339933?style=for-the-badge&logo=node.js&logoColor=white" alt="Node.js 22">
+  <img src="https://img.shields.io/badge/Next.js-16.x-000000?style=for-the-badge&logo=next.js&logoColor=white" alt="Next.js 16">
+  <img src="https://img.shields.io/badge/MongoDB-Atlas-47A248?style=for-the-badge&logo=mongodb&logoColor=white" alt="MongoDB Atlas">
+</p>
 
----
+## Overview
 
-## 📌 Project Overview
+AgroNex Sahayak helps senior citizens request assistance and enables verified volunteers to respond through a controlled, auditable workflow. Police administrators manage volunteer verification, assignments, emergency records, and audit activity from a central system.
 
-**AgroNex Sahayak** is a community assistance platform designed to facilitate assistance requests from senior citizens and connect them with verified and active volunteers.
+The repository contains both sides of the application:
 
-The backend provides:
+- **Backend:** Express REST API with JWT authentication, role-based authorization, and MongoDB persistence.
+- **Frontend:** Next.js application with role-specific experiences for seniors, volunteers, and administrators.
 
-* Secure authentication
-* Role-based access control
-* Volunteer registration and verification
-* Assistance request management
-* Volunteer assignment
-* Emergency record creation
-* Audit logging
-* MongoDB-based data persistence
+### Core roles
 
-The system is designed around three primary roles:
+| Role | Responsibility |
+| --- | --- |
+| **Senior Citizen** | Create and track assistance requests. |
+| **Volunteer** | Register, receive assignments, and update request status. |
+| **Police Admin** | Verify volunteers, assign requests, manage emergencies, and review audit logs. |
 
-* **Senior Citizen**
-* **Volunteer**
-* **Police Admin**
+## Features
 
----
+- Volunteer registration, authentication, verification, and activation
+- Admin authentication with JWT access tokens
+- Role-based route protection
+- Assistance request creation, retrieval, assignment, and status updates
+- Emergency record creation
+- Audit logging for important administrative actions
+- MongoDB data models for users, profiles, organisations, requests, emergencies, and audit logs
+- Next.js frontend views for admin, senior, and volunteer workflows
 
-## 🎯 Evaluation 2 Scope
-
-This repository contains the backend implementation developed for **HPL 2026 — Round 1 Evaluation 2**.
-
-The current implementation focuses on the core backend functionality required for the Evaluation 2 milestone.
-
-### Implemented
-
-* Volunteer registration
-* Volunteer login
-* Police Admin login
-* JWT-based authentication
-* Role-based authorization
-* Volunteer verification
-* Volunteer activation
-* Assistance request creation
-* Assistance request retrieval
-* Volunteer assignment
-* Request status management
-* Emergency record creation
-* Audit logging
-* MongoDB/Mongoose data models
-
-### Planned for Round 2
-
-The remaining backend functionality will be completed and refined during the next implementation stage, including additional profile management, extended emergency handling, stronger validation, automated testing, and further backend hardening.
-
----
-
-## 🏗️ System Architecture
+## Architecture
 
 ```text
-                    Client / API Consumer
-                            │
-                            ▼
-                    Express REST API
-                            │
-             ┌──────────────┴──────────────┐
-             │                             │
-             ▼                             ▼
-      JWT Authentication             Role-Based Access
-             │                             │
-             └──────────────┬──────────────┘
-                            ▼
-                       Controllers
-                            │
-                            ▼
-                         Models
-                            │
-                            ▼
-                    MongoDB / Mongoose
+                         Next.js Frontend
+                    (Admin / Senior / Volunteer)
+                                  |
+                                  v
+                           Express REST API
+                                  |
+              +-------------------+-------------------+
+              |                                       |
+              v                                       v
+      JWT Authentication                      Role Authorization
+              |                                       |
+              +-------------------+-------------------+
+                                  |
+                                  v
+                         Controllers and Services
+                                  |
+                                  v
+                            Mongoose Models
+                                  |
+                                  v
+                             MongoDB Atlas
 ```
 
-The backend follows a modular structure separating routes, controllers, middleware, models, services, and configuration.
+## Technology Stack
 
----
+| Layer | Technologies |
+| --- | --- |
+| Frontend | Next.js 16, React 19, Tailwind CSS 4 |
+| Backend | Node.js 22, Express 5 |
+| Database | MongoDB Atlas, Mongoose |
+| Security | JWT, bcryptjs, dotenv |
+| Development | Nodemon, ESLint |
 
-## 🛠️ Technology Stack
-
-| Technology    | Purpose                       |
-| ------------- | ----------------------------- |
-| Node.js       | JavaScript runtime            |
-| Express.js    | REST API framework            |
-| MongoDB Atlas | Database                      |
-| Mongoose      | MongoDB object modeling       |
-| JWT           | Authentication                |
-| bcryptjs      | Password hashing              |
-| CORS          | Cross-origin request handling |
-| dotenv        | Environment configuration     |
-| Nodemon       | Development server            |
-
----
-
-## 📁 Project Structure
+## Repository Structure
 
 ```text
 agronex-sahayak-backend/
-│
-├── config/
-│   └── db.js
-│
-├── controllers/
-│   ├── auditController.js
-│   ├── authController.js
-│   ├── emergencyController.js
-│   ├── requestController.js
-│   └── volunteerController.js
-│
-├── middleware/
-│   ├── authMiddleware.js
-│   └── roleMiddleware.js
-│
-├── models/
-│   ├── AssistanceRequest.js
-│   ├── AuditLog.js
-│   ├── EmergencyRecord.js
-│   ├── Organisation.js
-│   ├── SeniorProfile.js
-│   ├── User.js
-│   └── VolunteerProfile.js
-│
-├── routes/
-│   ├── auditRoutes.js
-│   ├── authRoutes.js
-│   ├── emergencyRoutes.js
-│   ├── requestRoutes.js
-│   └── volunteerRoutes.js
-│
-├── scripts/
-│   ├── createAdmin.js
-│   └── createSenior.js
-│
-├── services/
-│   └── auditService.js
-│
-├── .env.example
+├── backend/
+│   ├── config/             # Database configuration
+│   ├── controllers/        # Request handlers
+│   ├── middleware/         # Authentication and role checks
+│   ├── models/             # Mongoose schemas
+│   ├── routes/             # REST API routes
+│   ├── scripts/            # Setup scripts
+│   ├── services/           # Shared business services
+│   ├── .env.example
+│   ├── package.json
+│   └── server.js
+├── frontend/
+│   ├── app/
+│   │   ├── admin/
+│   │   ├── senior/
+│   │   └── volunteer/
+│   ├── public/
+│   └── package.json
 ├── .gitignore
-├── package.json
-├── package-lock.json
-└── server.js
+└── README.md
 ```
 
----
-
-## 🔐 Authentication & Authorization
-
-The backend uses **JWT-based authentication**.
-
-After successful login, the server issues a JWT containing the authenticated user's identity and role.
-
-Protected routes use:
-
-```text
-Authorization: Bearer <JWT_TOKEN>
-```
-
-Role-based middleware restricts access according to the user's role.
-
-### Role Access
-
-| Functionality             | Senior | Volunteer | Police Admin |
-| ------------------------- | :----: | :-------: | :----------: |
-| Volunteer Registration    |    —   |     ✓     |       —      |
-| Volunteer Login           |    —   |     ✓     |       —      |
-| Admin Login               |    —   |     —     |       ✓      |
-| View Volunteers           |    —   |     —     |       ✓      |
-| Verify Volunteer          |    —   |     —     |       ✓      |
-| Activate Volunteer        |    —   |     —     |       ✓      |
-| Create Assistance Request |    ✓   |     —     |       ✓      |
-| View Requests             |    ✓   |     ✓     |       ✓      |
-| Assign Volunteer          |    —   |     —     |       ✓      |
-| Update Request Status     |    —   |     ✓     |       ✓      |
-| Create Emergency Record   |    —   |     —     |       ✓      |
-| View Audit Logs           |    —   |     —     |       ✓      |
-
----
-
-## 🗄️ Database Architecture
-
-The backend uses MongoDB with Mongoose models.
-
-### Collections / Models
-
-```text
-User
-   │
-   ├── SeniorProfile
-   │
-   └── VolunteerProfile
-          │
-          └── Organisation
-
-AssistanceRequest
-   │
-   ├── User (Senior)
-   └── User (Volunteer)
-
-EmergencyRecord
-   │
-   └── AssistanceRequest
-
-AuditLog
-   ├── User
-   └── AssistanceRequest
-```
-
-### Core Data Models
-
-* `User`
-* `SeniorProfile`
-* `VolunteerProfile`
-* `Organisation`
-* `AssistanceRequest`
-* `EmergencyRecord`
-* `AuditLog`
-
----
-
-## 🔌 API Endpoints
-
-### Authentication
-
-| Method | Endpoint                       | Access |
-| ------ | ------------------------------ | ------ |
-| `POST` | `/api/auth/volunteer/register` | Public |
-| `POST` | `/api/auth/volunteer/login`    | Public |
-| `POST` | `/api/auth/admin/login`        | Public |
-
-### Volunteers
-
-| Method  | Endpoint                       | Access       |
-| ------- | ------------------------------ | ------------ |
-| `GET`   | `/api/volunteers`              | Police Admin |
-| `PATCH` | `/api/volunteers/:id/verify`   | Police Admin |
-| `PATCH` | `/api/volunteers/:id/activate` | Police Admin |
-
-### Assistance Requests
-
-| Method  | Endpoint                   | Access                            |
-| ------- | -------------------------- | --------------------------------- |
-| `POST`  | `/api/requests`            | Senior / Police Admin             |
-| `GET`   | `/api/requests`            | Senior / Volunteer / Police Admin |
-| `PATCH` | `/api/requests/:id/assign` | Police Admin                      |
-| `PATCH` | `/api/requests/:id/status` | Volunteer / Police Admin          |
-
-### Emergency
-
-| Method | Endpoint           | Access       |
-| ------ | ------------------ | ------------ |
-| `POST` | `/api/emergencies` | Police Admin |
-
-### Audit Logs
-
-| Method | Endpoint          | Access       |
-| ------ | ----------------- | ------------ |
-| `GET`  | `/api/audit-logs` | Police Admin |
-
-> Detailed request bodies, authentication requirements, response formats, and example API calls will be provided in the project's API documentation.
-
----
-
-## ⚙️ Getting Started
+## Quick Start
 
 ### Prerequisites
 
-Make sure the following are installed:
-
-* Node.js
-* npm
-* MongoDB Atlas account or MongoDB instance
+- Node.js 22.x or later
+- npm
+- A MongoDB Atlas cluster or local MongoDB instance
 
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/<your-username>/agronex-sahayak-backend.git
-```
-
-```bash
+git clone https://github.com/rohanmendon26-byte/agronex-sahayak-backend.git
 cd agronex-sahayak-backend
 ```
 
-### 2. Install dependencies
+### 2. Configure the backend
 
 ```bash
+cd backend
 npm install
+copy .env.example .env
 ```
 
-### 3. Configure environment variables
-
-Create a `.env` file in the project root:
+Open `backend/.env` and set your values:
 
 ```env
 PORT=5000
 MONGO_URI=your_mongodb_connection_string
-JWT_SECRET=your_jwt_secret
+JWT_SECRET=your_long_random_secret
 ```
 
-> Never commit `.env` to GitHub. Use `.env.example` as the reference configuration.
-
-### 4. Start the development server
+Start the API in development mode:
 
 ```bash
 npm run dev
 ```
 
-For production-style execution:
+The backend is available at `http://localhost:5000`.
+
+### 3. Configure the frontend
+
+Open a second terminal from the repository root:
 
 ```bash
-npm start
+cd frontend
+npm install
+npm run dev
 ```
 
-The server runs by default at:
+The frontend is available at `http://localhost:3000`.
+
+> Never commit `.env`, `.env.local`, database credentials, or JWT secrets. Use the included environment example files as templates.
+
+## API Reference
+
+All protected endpoints require:
 
 ```text
-http://localhost:5000
+Authorization: Bearer <JWT_TOKEN>
 ```
 
----
+### Authentication
 
-## 🧪 Testing & Verification
+| Method | Endpoint | Access |
+| --- | --- | --- |
+| `POST` | `/api/auth/volunteer/register` | Public |
+| `POST` | `/api/auth/volunteer/login` | Public |
+| `POST` | `/api/auth/admin/login` | Public |
 
-The Evaluation 2 implementation is verified through API testing covering the core backend workflow.
+### Volunteers
 
-The demonstration includes:
+| Method | Endpoint | Access |
+| --- | --- | --- |
+| `GET` | `/api/volunteers` | Police Admin |
+| `PATCH` | `/api/volunteers/:id/verify` | Police Admin |
+| `PATCH` | `/api/volunteers/:id/activate` | Police Admin |
+
+### Assistance Requests
+
+| Method | Endpoint | Access |
+| --- | --- | --- |
+| `POST` | `/api/requests` | Senior / Police Admin |
+| `GET` | `/api/requests` | Senior / Volunteer / Police Admin |
+| `PATCH` | `/api/requests/:id/assign` | Police Admin |
+| `PATCH` | `/api/requests/:id/status` | Volunteer / Police Admin |
+
+### Emergency and audit records
+
+| Method | Endpoint | Access |
+| --- | --- | --- |
+| `POST` | `/api/emergencies` | Police Admin |
+| `GET` | `/api/audit-logs` | Police Admin |
+
+## Security Model
+
+1. Users authenticate through the appropriate login endpoint.
+2. The API issues a JWT containing the authenticated identity and role.
+3. Middleware validates the token on protected routes.
+4. Role middleware confirms that the user can perform the requested action.
+5. Important administrative activity is recorded in the audit log.
+
+## Development Commands
+
+### Backend
+
+```bash
+cd backend
+npm run dev       # Start with Nodemon
+npm start         # Start with Node.js
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm run dev       # Start the Next.js development server
+npm run build     # Create a production build
+npm start         # Serve the production build
+npm run lint      # Run ESLint
+```
+
+## Demonstration
+
+The Evaluation 2 demonstration covers the main workflow:
 
 ```text
 Volunteer Registration
-        ↓
-Volunteer Login
-        ↓
-Admin Login
-        ↓
-Volunteer Verification
-        ↓
-Volunteer Activation
-        ↓
-Assistance Request
-        ↓
-Volunteer Assignment
-        ↓
-Request Status Update
-        ↓
-Emergency Record
-        ↓
-Audit Log
+        -> Volunteer Login
+        -> Admin Login
+        -> Volunteer Verification
+        -> Volunteer Activation
+        -> Assistance Request
+        -> Volunteer Assignment
+        -> Request Status Update
+        -> Emergency Record
+        -> Audit Log
 ```
 
-Test evidence and screenshots are maintained as part of the Evaluation 2 submission.
+**Video:** [Watch the Evaluation 2 Backend Demonstration](https://youtu.be/fq3BohuEsoA)
+
+## Project Status
+
+**Current milestone:** Round 1 - Evaluation 2
+**Current focus:** Core backend workflow and frontend integration
+**Next milestone:** Round 2 - Expanded backend functionality, validation, testing, and production hardening
+
+Planned improvements include richer profile management, extended emergency handling, stronger request state validation, automated testing, and additional security hardening.
+
+## Team
+
+AgroNex Sahayak is developed as part of **HPL 2026**.
 
 ---
 
-## 🎥 Demonstration
-
-### YouTube Video
-
-**Evaluation 2 Backend Demonstration:**
-[▶️ Watch the 5-Minute Demonstration](https://youtu.be/fq3BohuEsoA)
-
-> The demonstration covers the proposed functionality, implemented backend features, API workflow, database interaction, and differences between the Evaluation 1 proposal and the current implementation.
-
-**YouTube Link:** `https://youtu.be/fq3BohuEsoA`
-
-
----
-
-## 📋 Evaluation 1 → Evaluation 2 Changes
-
-The Evaluation 1 document described the proposed backend architecture and functionality.
-
-During implementation, some features were adjusted and some functionality was deferred to the next implementation stage.
-
-The updated Evaluation 1 document records:
-
-* Original proposed functionality
-* Actually implemented functionality
-* Changes made during development
-* Reason for changes
-* Functionality planned for the next stage
-
----
-
-## 🚀 Future Development
-
-The project will continue beyond the current Evaluation 2 milestone.
-
-Planned development includes:
-
-* Additional senior profile functionality
-* Extended emergency management
-* Enhanced request validation and state handling
-* Automated backend testing
-* Additional security and production hardening
-* Remaining backend functionality
-* Frontend application integration
-
----
-
-## 👥 Team
-
-**AgroNex Sahayak — HPL 2026**
-
-Backend implementation developed as part of the HPL 2026 project.
-
----
-
-## 📄 Project Status
-
-**Current Milestone:** Round 1 — Evaluation 2
-
-**Implementation Target:** 50% Backend Implementation
-
-**Next Milestone:** Round 2 — Complete Backend Implementation
-
----
-
-> **AgroNex Sahayak** — Technology for safer, more connected community assistance.
+> **AgroNex Sahayak** - Technology for safer, more connected community assistance.
