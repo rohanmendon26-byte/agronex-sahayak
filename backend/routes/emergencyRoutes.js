@@ -12,7 +12,7 @@ const router = express.Router();
 router.post(
     "/",
     authenticate,
-    authorize("POLICE_ADMIN"),
+    authorize("SENIOR", "POLICE_ADMIN"),
     createEmergency
 );
 

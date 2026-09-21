@@ -112,7 +112,7 @@ const verifyVolunteer = async (req, res) => {
 
         await createAuditLog({
             userId: req.user.userId,
-            action: "VOLUNTEER_VERIFIED"
+            action: "VOLUNTEER_ACTIVATED"
         });
 
         return res.status(200).json({
