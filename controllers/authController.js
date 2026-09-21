@@ -1,6 +1,7 @@
 const bcrypt = require("bcryptjs");
 const User = require("../models/User");
 const VolunteerProfile = require("../models/VolunteerProfile");
+const SeniorProfile = require("../models/SeniorProfile");
 
 const registerVolunteer = async (req, res) => {
     try {
@@ -90,6 +91,178 @@ const registerVolunteer = async (req, res) => {
 };
 
 const jwt = require("jsonwebtoken");
+
+
+const registerSenior = async (req, res) => {
+    try {
+        const { name, phone, email, password, location } = req.body;
+
+        // Validate required fields
+        if (!name || !phone || !password || !location) {
+            return res.status(400).json({
+                success: false,
+                error: {
+                    code: "INVALID_INPUT",
+                    message: "Name, phone, password and location are required"
+                }
+            });
+        }
+
+        // Check phone
+        const existingPhone = await User.findOne({ phone });
+
+        if (existingPhone) {
+            return res.status(409).json({
+                success: false,
+                error: {
+                    code: "PHONE_EXISTS",
+                    message: "Phone number is already registered"
+                }
+            });
+        }
+
+        // Check email
+        if (email) {
+            const existingEmail = await User.findOne({ email });
+
+            if (existingEmail) {
+                return res.status(409).json({
+                    success: false,
+                    error: {
+                        code: "EMAIL_EXISTS",
+                        message: "Email is already registered"
+                    }
+                });
+            }
+        }
+
+        // Hash password
+        const passwordHash = await bcrypt.hash(password, 10);
+
+        // Create senior user
+        const user = await User.create({
+            name,
+            phone,
+            email: email || undefined,
+            passwordHash,
+            role: "SENIOR"
+        });
+
+        // Create senior profile
+        await SeniorProfile.create({
+            userId: user._id,
+            location
+        });
+
+        return res.status(201).json({
+            success: true,
+            message: "Senior registered successfully",
+            data: {
+                userId: user._id,
+                name: user.name,
+                phone: user.phone,
+                email: user.email || null,
+                role: user.role
+            }
+        });
+
+    } catch (error) {
+        console.error("Senior registration error:", error);
+
+        return res.status(500).json({
+            success: false,
+            error: {
+                code: "SERVER_ERROR",
+                message: "Internal server error"
+            }
+        });
+    }
+};
+
+
+const loginSenior = async (req, res) => {
+    try {
+        const { phone, password } = req.body;
+
+        if (!phone || !password) {
+            return res.status(400).json({
+                success: false,
+                error: {
+                    code: "INVALID_INPUT",
+                    message: "Phone and password are required"
+                }
+            });
+        }
+
+        const user = await User.findOne({
+            phone,
+            role: "SENIOR"
+        });
+
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                error: {
+                    code: "INVALID_CREDENTIALS",
+                    message: "Invalid phone or password"
+                }
+            });
+        }
+
+        const isPasswordCorrect = await bcrypt.compare(
+            password,
+            user.passwordHash
+        );
+
+        if (!isPasswordCorrect) {
+            return res.status(401).json({
+                success: false,
+                error: {
+                    code: "INVALID_CREDENTIALS",
+                    message: "Invalid phone or password"
+                }
+            });
+        }
+
+        const token = jwt.sign(
+            {
+                userId: user._id,
+                role: user.role
+            },
+            process.env.JWT_SECRET,
+            {
+                expiresIn: "1h"
+            }
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: "Senior login successful",
+            data: {
+                token,
+                user: {
+                    userId: user._id,
+                    name: user.name,
+                    phone: user.phone,
+                    email: user.email || null,
+                    role: user.role
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error("Senior login error:", error);
+
+        return res.status(500).json({
+            success: false,
+            error: {
+                code: "SERVER_ERROR",
+                message: "Internal server error"
+            }
+        });
+    }
+};
+
 
 const loginVolunteer = async (req, res) => {
     try {
@@ -264,5 +437,9 @@ const loginAdmin = async (req, res) => {
 };
 
 module.exports = {
-    registerVolunteer,loginVolunteer,loginAdmin
+    registerVolunteer,
+    loginVolunteer,
+    loginAdmin,
+    registerSenior,
+    loginSenior
 };

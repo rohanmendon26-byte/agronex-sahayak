@@ -1,6 +1,7 @@
 const AssistanceRequest = require("../models/AssistanceRequest");
 const VolunteerProfile = require("../models/VolunteerProfile");
 const { createAuditLog } = require("../services/auditService");
+const mongoose = require("mongoose");
 
 
 const createRequest = async (req, res) => {
@@ -25,6 +26,12 @@ const createRequest = async (req, res) => {
             location,
             priority,
             status: "PENDING"
+        });
+
+        await createAuditLog({
+            userId: req.user.userId,
+            requestId: request._id,
+            action: "ASSISTANCE_REQUEST_CREATED"
         });
 
         return res.status(201).json({
@@ -92,7 +99,28 @@ const getRequests = async (req, res) => {
 const assignVolunteer = async (req, res) => {
     try {
         const { id } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({
+                success: false,
+                error: {
+                    code: "INVALID_ID",
+                    message: "Invalid request ID"
+                }
+            });
+        }
+
         const { volunteerId } = req.body;
+
+        if (!mongoose.Types.ObjectId.isValid(volunteerId)) {
+            return res.status(400).json({
+                success: false,
+                error: {
+                    code: "INVALID_ID",
+                    message: "Invalid volunteer ID"
+                }
+            });
+        }
 
         // Validate volunteerId
         if (!volunteerId) {
@@ -155,6 +183,16 @@ const assignVolunteer = async (req, res) => {
             });
         }
 
+        if (!volunteerProfile.availability) {
+            return res.status(409).json({
+                success: false,
+                error: {
+                    code: "VOLUNTEER_UNAVAILABLE",
+                    message: "Volunteer is currently unavailable"
+                }
+            });
+        }
+
         // Assign volunteer
         request.volunteerId = volunteerId;
         request.status = "ASSIGNED";
@@ -162,10 +200,10 @@ const assignVolunteer = async (req, res) => {
         await request.save();
 
         await createAuditLog({
-        userId: req.user.userId,
-        requestId: request._id,
-        action: "VOLUNTEER_ASSIGNED"
-});
+            userId: req.user.userId,
+            requestId: request._id,
+            action: "VOLUNTEER_ASSIGNED"
+        });
 
         return res.status(200).json({
             success: true,
@@ -194,6 +232,17 @@ const assignVolunteer = async (req, res) => {
 const updateRequestStatus = async (req, res) => {
     try {
         const { id } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({
+                success: false,
+                error: {
+                    code: "INVALID_ID",
+                    message: "Invalid request ID"
+                }
+            });
+        }
+
         const { status } = req.body;
 
         // Validate status
@@ -254,15 +303,38 @@ const updateRequestStatus = async (req, res) => {
         }
 
         // Update status
+        // Validate state transition
+        const validTransitions = {
+            PENDING: ["ASSIGNED"],
+            ASSIGNED: ["IN_PROGRESS"],
+            IN_PROGRESS: ["COMPLETED"]
+        };
+
+        const currentStatus = request.status;
+
+        if (
+            !validTransitions[currentStatus] ||
+            !validTransitions[currentStatus].includes(status)
+        ) {
+            return res.status(409).json({
+                success: false,
+                error: {
+                    code: "INVALID_STATE",
+                    message: `Cannot change request status from ${currentStatus} to ${status}`
+                }
+            });
+        }
+
+        // Update status
         request.status = status;
 
         await request.save();
 
         await createAuditLog({
-        userId: req.user.userId,
-        requestId: request._id,
-        action: `REQUEST_STATUS_UPDATED_TO_${status}`
-});
+            userId: req.user.userId,
+            requestId: request._id,
+            action: `REQUEST_STATUS_UPDATED_TO_${status}`
+        });
 
         return res.status(200).json({
             success: true,

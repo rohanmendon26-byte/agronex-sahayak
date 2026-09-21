@@ -1,5 +1,6 @@
 const User = require("../models/User");
 const VolunteerProfile = require("../models/VolunteerProfile");
+const { createAuditLog } = require("../services/auditService");
 
 const getVolunteers = async (req, res) => {
     try {
@@ -109,6 +110,11 @@ const verifyVolunteer = async (req, res) => {
 
         await profile.save();
 
+        await createAuditLog({
+            userId: req.user.userId,
+            action: "VOLUNTEER_VERIFIED"
+        });
+
         return res.status(200).json({
             success: true,
             message: "Volunteer verified successfully",
@@ -181,6 +187,11 @@ const activateVolunteer = async (req, res) => {
 
         await profile.save();
 
+        await createAuditLog({
+            userId: req.user.userId,
+            action: "VOLUNTEER_VERIFIED"
+        });
+
         return res.status(200).json({
             success: true,
             message: "Volunteer activated successfully",
@@ -203,8 +214,77 @@ const activateVolunteer = async (req, res) => {
     }
 };
 
+
+const updateAvailability = async (req, res) => {
+    try {
+        const { availability } = req.body;
+
+        // Validate availability
+        if (typeof availability !== "boolean") {
+            return res.status(400).json({
+                success: false,
+                error: {
+                    code: "VALIDATION_ERROR",
+                    message: "availability must be a boolean"
+                }
+            });
+        }
+
+        // Find volunteer profile
+        const profile = await VolunteerProfile.findOne({
+            userId: req.user.userId
+        });
+
+        if (!profile) {
+            return res.status(404).json({
+                success: false,
+                error: {
+                    code: "PROFILE_NOT_FOUND",
+                    message: "Volunteer profile not found"
+                }
+            });
+        }
+
+        // Only active volunteers can change availability
+        if (profile.status !== "ACTIVE") {
+            return res.status(409).json({
+                success: false,
+                error: {
+                    code: "INVALID_STATE",
+                    message: "Only active volunteers can update availability"
+                }
+            });
+        }
+
+        profile.availability = availability;
+
+        await profile.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Volunteer availability updated successfully",
+            data: {
+                volunteerId: req.user.userId,
+                availability: profile.availability
+            }
+        });
+
+    } catch (error) {
+        console.error("Update availability error:", error);
+
+        return res.status(500).json({
+            success: false,
+            error: {
+                code: "SERVER_ERROR",
+                message: "Internal server error"
+            }
+        });
+    }
+};
+
 module.exports = {
     getVolunteers,
     verifyVolunteer,
-    activateVolunteer
+    activateVolunteer,
+    updateAvailability
 };

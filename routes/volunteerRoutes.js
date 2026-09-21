@@ -6,7 +6,8 @@ const authorize = require("../middleware/roleMiddleware");
 const {
     getVolunteers,
     verifyVolunteer,
-    activateVolunteer
+    activateVolunteer,
+    updateAvailability
 } = require("../controllers/volunteerController");
 
 const router = express.Router();
@@ -30,6 +31,13 @@ router.patch(
     authenticate,
     authorize("POLICE_ADMIN"),
     activateVolunteer
+);
+
+router.patch(
+    "/availability",
+    authenticate,
+    authorize("VOLUNTEER"),
+    updateAvailability
 );
 
 module.exports = router;
