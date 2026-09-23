@@ -2,6 +2,46 @@ const User = require("../models/User");
 const VolunteerProfile = require("../models/VolunteerProfile");
 const { createAuditLog } = require("../services/auditService");
 
+const getVolunteerProfile = async (req, res) => {
+    try {
+        const profile = await VolunteerProfile.findOne({
+            userId: req.user.userId
+        }).lean();
+
+        if (!profile) {
+            return res.status(404).json({
+                success: false,
+                error: {
+                    code: "PROFILE_NOT_FOUND",
+                    message: "Volunteer profile not found"
+                }
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                userId: req.user.userId,
+                availability: profile.availability,
+                status: profile.status,
+                skills: profile.skills || [],
+                organisationId: profile.organisationId || null,
+                verificationNotes: profile.verificationNotes || null
+            }
+        });
+    } catch (error) {
+        console.error("Get volunteer profile error:", error);
+
+        return res.status(500).json({
+            success: false,
+            error: {
+                code: "SERVER_ERROR",
+                message: "Internal server error"
+            }
+        });
+    }
+};
+
 const getVolunteers = async (req, res) => {
     try {
         const volunteers = await User.find(
@@ -283,6 +323,7 @@ const updateAvailability = async (req, res) => {
 };
 
 module.exports = {
+    getVolunteerProfile,
     getVolunteers,
     verifyVolunteer,
     activateVolunteer,

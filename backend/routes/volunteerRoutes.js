@@ -4,6 +4,7 @@ const authenticate = require("../middleware/authMiddleware");
 const authorize = require("../middleware/roleMiddleware");
 
 const {
+    getVolunteerProfile,
     getVolunteers,
     verifyVolunteer,
     activateVolunteer,
@@ -11,6 +12,13 @@ const {
 } = require("../controllers/volunteerController");
 
 const router = express.Router();
+
+router.get(
+    "/me",
+    authenticate,
+    authorize("VOLUNTEER"),
+    getVolunteerProfile
+);
 
 router.get(
     "/",

@@ -1,12 +1,13 @@
 const AssistanceRequest = require("../models/AssistanceRequest");
 const VolunteerProfile = require("../models/VolunteerProfile");
+const EmergencyRecord = require("../models/EmergencyRecord");
 const { createAuditLog } = require("../services/auditService");
 const mongoose = require("mongoose");
 
 
 const createRequest = async (req, res) => {
     try {
-        const { need, location, priority } = req.body;
+        const { need, location, priority, channel } = req.body;
 
         // Validate required fields
         if (!need || !location || !priority) {
@@ -19,19 +20,22 @@ const createRequest = async (req, res) => {
             });
         }
 
+        const requestChannel = channel === "VOICE" ? "VOICE" : "TEXT";
+
         // Create assistance request
         const request = await AssistanceRequest.create({
             seniorId: req.user.userId,
             need,
             location,
             priority,
+            channel: requestChannel,
             status: "PENDING"
         });
 
         await createAuditLog({
             userId: req.user.userId,
             requestId: request._id,
-            action: "ASSISTANCE_REQUEST_CREATED"
+            action: requestChannel === "VOICE" ? "VOICE_ASSISTANCE_REQUEST_CREATED" : "ASSISTANCE_REQUEST_CREATED"
         });
 
         return res.status(201).json({
@@ -55,25 +59,44 @@ const createRequest = async (req, res) => {
 
 const getRequests = async (req, res) => {
     try {
+        // Auto-sync priority for any requests with an active escalated emergency record
+        const escalatedRecords = await EmergencyRecord.find({
+            escalationStatus: "ESCALATED"
+        }).select("requestId").lean();
+
+        if (escalatedRecords && escalatedRecords.length > 0) {
+            const emergencyReqIds = escalatedRecords.map(e => e.requestId);
+            await AssistanceRequest.updateMany(
+                { _id: { $in: emergencyReqIds }, priority: { $ne: "EMERGENCY" } },
+                { $set: { priority: "EMERGENCY" } }
+            );
+        }
+
         let requests;
 
         // Senior → only their own requests
         if (req.user.role === "SENIOR") {
             requests = await AssistanceRequest.find({
                 seniorId: req.user.userId
-            }).sort({ createdAt: -1 });
+            })
+                .populate("volunteerId", "name phone")
+                .sort({ createdAt: -1 });
         }
 
         // Volunteer → only requests assigned to them
         else if (req.user.role === "VOLUNTEER") {
             requests = await AssistanceRequest.find({
                 volunteerId: req.user.userId
-            }).sort({ createdAt: -1 });
+            })
+                .populate("seniorId", "name phone")
+                .sort({ createdAt: -1 });
         }
 
         // Police Admin → all requests
         else if (req.user.role === "POLICE_ADMIN") {
             requests = await AssistanceRequest.find()
+                .populate("volunteerId", "name phone")
+                .populate("seniorId", "name phone")
                 .sort({ createdAt: -1 });
         }
 

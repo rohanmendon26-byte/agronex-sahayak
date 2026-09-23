@@ -5,6 +5,7 @@ const volunteerRoutes = require("./routes/volunteerRoutes");
 const requestRoutes = require("./routes/requestRoutes");
 const emergencyRoutes = require("./routes/emergencyRoutes");
 const auditRoutes = require("./routes/auditRoutes");
+const voiceRoutes = require("./routes/voiceRoutes");
 require("dotenv").config();
 
 const connectDB = require("./config/db");
@@ -24,6 +25,7 @@ app.use("/api/volunteers", volunteerRoutes);
 app.use("/api/requests", requestRoutes);
 app.use("/api/emergencies", emergencyRoutes);
 app.use("/api/audit-logs", auditRoutes);
+app.use("/api/voice", voiceRoutes);
 
 // Test route
 app.get("/", (req, res) => {

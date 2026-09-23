@@ -42,28 +42,28 @@ const createEmergency = async (req, res) => {
             });
         }
 
-        // Prevent duplicate emergency records
-        const existingEmergency = await EmergencyRecord.findOne({
+        // Update request priority to EMERGENCY
+        request.priority = "EMERGENCY";
+        await request.save();
+
+        // Check or create emergency record
+        let emergency = await EmergencyRecord.findOne({
             requestId
         });
 
-        if (existingEmergency) {
-            return res.status(409).json({
-                success: false,
-                error: {
-                    code: "EMERGENCY_EXISTS",
-                    message: "Emergency record already exists for this request"
-                }
+        if (!emergency) {
+            emergency = await EmergencyRecord.create({
+                requestId,
+                escalationStatus: "ESCALATED",
+                escalatedAt: new Date(),
+                details
             });
+        } else {
+            emergency.escalationStatus = "ESCALATED";
+            emergency.escalatedAt = new Date();
+            if (details) emergency.details = details;
+            await emergency.save();
         }
-
-        // Create emergency record
-        const emergency = await EmergencyRecord.create({
-            requestId,
-            escalationStatus: "ESCALATED",
-            escalatedAt: new Date(),
-            details
-        });
 
         // Audit log
         await createAuditLog({
@@ -72,7 +72,7 @@ const createEmergency = async (req, res) => {
             action: "EMERGENCY_ESCALATED"
         });
 
-        return res.status(201).json({
+        return res.status(200).json({
             success: true,
             message: "Emergency escalated successfully",
             data: emergency

@@ -39,6 +39,12 @@ const assistanceRequestSchema = new mongoose.Schema(
             default: "PENDING"
         },
 
+        channel: {
+            type: String,
+            enum: ["VOICE", "TEXT"],
+            default: "TEXT"
+        },
+
         createdAt: {
             type: Date,
             default: Date.now
