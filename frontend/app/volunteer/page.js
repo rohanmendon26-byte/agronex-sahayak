@@ -58,6 +58,14 @@ export default function VolunteerDashboard() {
             return;
         }
 
+        const savedRole = localStorage.getItem("agronex_role");
+        if (savedRole && savedRole !== "VOLUNTEER") {
+            if (savedRole === "SENIOR") router.push("/senior");
+            else if (savedRole === "POLICE_ADMIN") router.push("/admin");
+            else router.push("/");
+            return;
+        }
+
         try {
             const savedUser = localStorage.getItem("agronex_user");
             if (savedUser) {
@@ -88,6 +96,9 @@ export default function VolunteerDashboard() {
             const data = await response.json();
 
             if (!response.ok) {
+                if (response.status === 403) {
+                    return;
+                }
                 throw new Error(
                     data?.error?.message || "Failed to load volunteer profile"
                 );
@@ -96,7 +107,7 @@ export default function VolunteerDashboard() {
             const nextAvailability = data?.data?.availability ?? true;
             setAvailable(nextAvailability);
         } catch (err) {
-            console.error("Failed to fetch volunteer profile:", err.message);
+            console.warn("Volunteer profile note:", err.message);
         }
     };
 

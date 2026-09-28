@@ -62,6 +62,14 @@ export default function AdminDashboard() {
             return;
         }
 
+        const savedRole = localStorage.getItem("agronex_role");
+        if (savedRole && savedRole !== "POLICE_ADMIN") {
+            if (savedRole === "SENIOR") router.push("/senior");
+            else if (savedRole === "VOLUNTEER") router.push("/volunteer");
+            else router.push("/");
+            return;
+        }
+
         loadDashboard();
     }, []);
 
@@ -228,7 +236,6 @@ export default function AdminDashboard() {
             request.status !== "COMPLETED" &&
             (request.status === "EMERGENCY" ||
              request.priority === "EMERGENCY" ||
-             request.priority === "URGENT" ||
              request.isEmergency === true)
     );
 

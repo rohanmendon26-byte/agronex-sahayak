@@ -1,4 +1,5 @@
 const KNOWN_LOCALITIES = [
+    // English names
     "Shirva",
     "Udupi",
     "Manipal",
@@ -9,10 +10,37 @@ const KNOWN_LOCALITIES = [
     "Brahmavar",
     "Moodabidri",
     "Mangalore",
-    "Surathkal"
+    "Surathkal",
+    // Kannada script names & mapping
+    "ಶಿರ್ವ",
+    "ಉಡುಪಿ",
+    "ಮಣಿಪಾಲ",
+    "ಕಾಪು",
+    "ಕಾರ್ಕಳ",
+    "ಕುಂದಾಪುರ",
+    "ಪಡುಬಿದ್ರಿ",
+    "ಬ್ರಹ್ಮಾವರ",
+    "ಮೂಡಬಿದ್ರೆ",
+    "ಮಂಗಳೂರು",
+    "ಸುರತ್ಕಲ್"
 ];
 
+const LOCALITY_CANONICAL_MAP = {
+    "ಶಿರ್ವ": "Shirva",
+    "ಉಡುಪಿ": "Udupi",
+    "ಮಣಿಪಾಲ": "Manipal",
+    "ಕಾಪು": "Kaup",
+    "ಕಾರ್ಕಳ": "Karkala",
+    "ಕುಂದಾಪುರ": "Kundapura",
+    "ಪಡುಬಿದ್ರಿ": "Padubidri",
+    "ಬ್ರಹ್ಮಾವರ": "Brahmavar",
+    "ಮೂಡಬಿದ್ರೆ": "Moodabidri",
+    "ಮಂಗಳೂರು": "Mangalore",
+    "ಸುರತ್ಕಲ್": "Surathkal"
+};
+
 const EMERGENCY_KEYWORDS = [
+    // English
     "chest pain",
     "fallen",
     "bleeding",
@@ -24,10 +52,23 @@ const EMERGENCY_KEYWORDS = [
     "stroke",
     "sos",
     "unconscious",
-    "collapsed"
+    "collapsed",
+    // Kannada
+    "ಎದೆ ನೋವು",
+    "ಬಿದ್ದಿದ್ದೇನೆ",
+    "ಬಿದ್ದೆ",
+    "ರಕ್ತ",
+    "ಬೆಂಕಿ",
+    "ಹೃದಯಾಘಾತ",
+    "ಅಪಘಾತ",
+    "ಉಸಿರಾಟ",
+    "ಸಾವು",
+    "ತುರ್ತು",
+    "ಅಪಾಯ"
 ];
 
 const URGENT_KEYWORDS = [
+    // English
     "urgent",
     "today",
     "sick",
@@ -38,10 +79,22 @@ const URGENT_KEYWORDS = [
     "pain",
     "severe",
     "medicine",
-    "hospital"
+    "hospital",
+    // Kannada
+    "ಔಷಧಿ",
+    "ಮಾತ್ರೆ",
+    "ಜ್ವರ",
+    "ವೈದ್ಯರು",
+    "ಡಾಕ್ಟರ್",
+    "ಆಸ್ಪತ್ರೆ",
+    "ನೋವು",
+    "ಇಂದೇ",
+    "ಬೇಗ",
+    "ತುರ್ತಾಗಿ"
 ];
 
 const FILLER_PHRASES = [
+    // English
     "i urgently need",
     "i need to get",
     "i need to buy",
@@ -59,12 +112,21 @@ const FILLER_PHRASES = [
     "i want to get",
     "i want",
     "help me get",
-    "help me with"
+    "help me with",
+    // Kannada
+    "ನನಗೆ ತುರ್ತಾಗಿ ಬೇಕು",
+    "ನನಗೆ ಬೇಕಾಗಿದೆ",
+    "ನನಗೆ ಬೇಕು",
+    "ದಯವಿಟ್ಟು ತಂದುಕೊಡಿ",
+    "ದಯವಿಟ್ಟು",
+    "ತಂದುಕೊಡಿ",
+    "ಬೇಕಾಗಿದೆ",
+    "ಬೇಕು"
 ];
 
 const parseVoiceRequest = async (req, res) => {
     try {
-        const { transcript } = req.body;
+        const { transcript, language } = req.body;
 
         if (!transcript || typeof transcript !== "string" || !transcript.trim()) {
             return res.status(400).json({
@@ -82,9 +144,9 @@ const parseVoiceRequest = async (req, res) => {
         // 1. Priority Detection
         let priority = "ROUTINE";
 
-        if (EMERGENCY_KEYWORDS.some((kw) => lowerText.includes(kw))) {
+        if (EMERGENCY_KEYWORDS.some((kw) => lowerText.includes(kw.toLowerCase()))) {
             priority = "EMERGENCY";
-        } else if (URGENT_KEYWORDS.some((kw) => lowerText.includes(kw))) {
+        } else if (URGENT_KEYWORDS.some((kw) => lowerText.includes(kw.toLowerCase()))) {
             priority = "URGENT";
         }
 
@@ -92,7 +154,7 @@ const parseVoiceRequest = async (req, res) => {
         let detectedLocation = "";
         for (const locality of KNOWN_LOCALITIES) {
             if (lowerText.includes(locality.toLowerCase())) {
-                detectedLocation = locality;
+                detectedLocation = LOCALITY_CANONICAL_MAP[locality] || locality;
                 break;
             }
         }
@@ -102,7 +164,7 @@ const parseVoiceRequest = async (req, res) => {
 
         // Remove matched locality from need string if present
         if (detectedLocation) {
-            const locRegex = new RegExp(`(?:near|at|in)?\\s*${detectedLocation}`, "gi");
+            const locRegex = new RegExp(`(?:near|at|in|ಹತ್ತಿರ|ನಲ್ಲಿ)?\\s*${detectedLocation}`, "gi");
             cleanedNeed = cleanedNeed.replace(locRegex, "");
         }
 
@@ -131,6 +193,7 @@ const parseVoiceRequest = async (req, res) => {
                 location: detectedLocation || "Shirva",
                 priority: priority,
                 rawTranscript: rawText,
+                language: language || "en-IN",
                 channel: "VOICE"
             }
         });

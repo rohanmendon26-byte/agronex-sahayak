@@ -24,7 +24,8 @@ import {
   Radio,
   Edit3,
   RotateCcw,
-  Send
+  Send,
+  Globe
 } from "lucide-react";
 
 const getStatusStyle = (status) => {
@@ -53,8 +54,9 @@ export default function SeniorDashboard() {
     const [priority, setPriority] = useState("URGENT");
     const [channel, setChannel] = useState("TEXT");
 
-    // Voice Flow States
+    // Voice & Language Flow States
     const [activeTab, setActiveTab] = useState("VOICE"); // "VOICE" | "TEXT"
+    const [selectedLang, setSelectedLang] = useState("en-IN"); // "en-IN" | "kn-IN"
     const [isListening, setIsListening] = useState(false);
     const [transcript, setTranscript] = useState("");
     const [parsingVoice, setParsingVoice] = useState(false);
@@ -77,6 +79,14 @@ export default function SeniorDashboard() {
     useEffect(() => {
         if (!token) {
             router.push("/");
+            return;
+        }
+
+        const savedRole = localStorage.getItem("agronex_role");
+        if (savedRole && savedRole !== "SENIOR") {
+            if (savedRole === "VOLUNTEER") router.push("/volunteer");
+            else if (savedRole === "POLICE_ADMIN") router.push("/admin");
+            else router.push("/");
             return;
         }
 
@@ -106,6 +116,7 @@ export default function SeniorDashboard() {
         }
 
         const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = selectedLang;
         utterance.rate = 0.95;
         utterance.pitch = 1.0;
 
@@ -142,7 +153,7 @@ export default function SeniorDashboard() {
             const recognition = new SpeechRecognition();
             recognition.continuous = false;
             recognition.interimResults = true;
-            recognition.lang = "en-US";
+            recognition.lang = selectedLang;
 
             recognition.onstart = () => {
                 setIsListening(true);
@@ -203,7 +214,7 @@ export default function SeniorDashboard() {
                         "Content-Type": "application/json",
                         Authorization: `Bearer ${token}`
                     },
-                    body: JSON.stringify({ transcript })
+                    body: JSON.stringify({ transcript, language: selectedLang })
                 }
             );
 
@@ -220,8 +231,12 @@ export default function SeniorDashboard() {
                 priority: parsed.priority || "ROUTINE"
             });
 
-            // Read back confirmation aloud
-            const readBackMsg = `Understood. Assistance request for ${parsed.need} near ${parsed.location || "Shirva"}, marked priority as ${parsed.priority}. Please confirm to submit.`;
+            // Read back confirmation aloud in natural language
+            const isKannada = selectedLang === "kn-IN";
+            const readBackMsg = isKannada
+                ? `ಸರಿ. ${parsed.need} ವಿನಂತಿ, ಸ್ಥಳ ${parsed.location || "ಶಿರ್ವ"}, ಆಧ್ಯತೆ ${parsed.priority}. ದಯವಿಟ್ಟು ಖಚಿತಪಡಿಸಿ.`
+                : `Understood. Assistance request for ${parsed.need} near ${parsed.location || "Shirva"}, marked priority as ${parsed.priority}. Please confirm to submit.`;
+
             speakText(readBackMsg, "confirm-card");
         } catch (err) {
             setError(err.message);
@@ -374,7 +389,7 @@ export default function SeniorDashboard() {
                             <h1 className="text-lg font-extrabold tracking-tight">
                                 AgroNex <span className="text-emerald-400">Sahayak</span>
                             </h1>
-                            <p className="text-xs text-slate-400 font-medium">Voice-First Senior Portal</p>
+                            <p className="text-xs text-slate-400 font-medium">Multilingual Voice Senior Portal</p>
                         </div>
                     </div>
 
@@ -403,14 +418,14 @@ export default function SeniorDashboard() {
                         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 mb-2">
                             <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
                             <span className="text-xs font-semibold text-emerald-300 uppercase tracking-wider">
-                                Voice-First Assistance Enabled
+                                Multilingual Speech Recognition (English & ಕನ್ನಡ)
                             </span>
                         </div>
                         <h2 className="text-2xl sm:text-3xl font-extrabold text-white">
                             Welcome back, {user.name || "Senior"}
                         </h2>
                         <p className="text-sm text-slate-400 mt-1">
-                            Speak your request naturally or type manually to alert local volunteers.
+                            Speak your request naturally in English or Kannada to alert local volunteers.
                         </p>
                     </div>
 
@@ -443,40 +458,78 @@ export default function SeniorDashboard() {
 
                     {/* Left Panel: Voice vs Text Request Submission */}
                     <section className="glass-panel border border-slate-800 rounded-3xl p-6 sm:p-7 shadow-xl">
-                        {/* Tab Switcher */}
-                        <div className="flex items-center gap-2 p-1 bg-slate-900 border border-slate-800 rounded-2xl mb-6">
-                            <button
-                                type="button"
-                                onClick={() => setActiveTab("VOICE")}
-                                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all ${
-                                    activeTab === "VOICE"
-                                        ? "bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20"
-                                        : "text-slate-400 hover:text-slate-200"
-                                }`}
-                            >
-                                <Mic className="w-4 h-4" />
-                                <span>🎙️ Voice Request</span>
-                            </button>
+                        {/* Tab Switcher & Language Selector Header */}
+                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-6">
+                            <div className="flex items-center gap-2 p-1 bg-slate-900 border border-slate-800 rounded-2xl flex-1">
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTab("VOICE")}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition-all ${
+                                        activeTab === "VOICE"
+                                            ? "bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20"
+                                            : "text-slate-400 hover:text-slate-200"
+                                    }`}
+                                >
+                                    <Mic className="w-4 h-4" />
+                                    <span>🎙️ Voice</span>
+                                </button>
 
-                            <button
-                                type="button"
-                                onClick={() => setActiveTab("TEXT")}
-                                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all ${
-                                    activeTab === "TEXT"
-                                        ? "bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20"
-                                        : "text-slate-400 hover:text-slate-200"
-                                }`}
-                            >
-                                <FileText className="w-4 h-4" />
-                                <span>📝 Manual Form</span>
-                            </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTab("TEXT")}
+                                    className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition-all ${
+                                        activeTab === "TEXT"
+                                            ? "bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20"
+                                            : "text-slate-400 hover:text-slate-200"
+                                    }`}
+                                >
+                                    <FileText className="w-4 h-4" />
+                                    <span>📝 Form</span>
+                                </button>
+                            </div>
+
+                            {activeTab === "VOICE" && (
+                                <div className="flex items-center gap-1.5 p-1 bg-slate-900 border border-slate-800 rounded-2xl">
+                                    <Globe className="w-3.5 h-3.5 text-slate-400 ml-1.5" />
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedLang("en-IN")}
+                                        className={`py-1.5 px-2.5 rounded-xl text-xs font-semibold transition-all ${
+                                            selectedLang === "en-IN"
+                                                ? "bg-slate-800 text-white font-bold"
+                                                : "text-slate-400 hover:text-slate-200"
+                                        }`}
+                                    >
+                                        English
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedLang("kn-IN")}
+                                        className={`py-1.5 px-2.5 rounded-xl text-xs font-semibold transition-all ${
+                                            selectedLang === "kn-IN"
+                                                ? "bg-slate-800 text-emerald-400 font-bold"
+                                                : "text-slate-400 hover:text-slate-200"
+                                        }`}
+                                    >
+                                        ಕನ್ನಡ
+                                    </button>
+                                </div>
+                            )}
                         </div>
 
                         {activeTab === "VOICE" ? (
                             <div className="space-y-6">
-                                <div className="text-center py-4">
+                                <div className="text-center py-3">
                                     <p className="text-xs text-slate-400 mb-5">
-                                        Tap the microphone and describe what you need (e.g., <em className="text-slate-300">"I urgently need medicine picked up near Shirva"</em>)
+                                        {selectedLang === "kn-IN" ? (
+                                            <>
+                                                ಮೈಕ್ರೋಫೋನ್ ಒತ್ತಿ ನಿಮ್ಮ ವಿನಂತಿಯನ್ನು ಹೇಳಿ (ಉದಾ: <em className="text-emerald-300">"ನನಗೆ ತುರ್ತಾಗಿ ಔಷಧಿ ಶಿರ್ವ ಹತ್ತಿರ ಬೇಕು"</em>)
+                                            </>
+                                        ) : (
+                                            <>
+                                                Tap microphone and describe what you need (e.g., <em className="text-slate-300">"I urgently need medicine picked up near Shirva"</em>)
+                                            </>
+                                        )}
                                     </p>
 
                                     {/* Big Voice Button */}
@@ -497,14 +550,16 @@ export default function SeniorDashboard() {
                                         ) : (
                                             <>
                                                 <Mic className="w-9 h-9" />
-                                                <span className="text-[10px] font-extrabold uppercase">Tap & Speak</span>
+                                                <span className="text-[10px] font-extrabold uppercase">
+                                                    {selectedLang === "kn-IN" ? "ಮಾತನಾಡಿ" : "Tap & Speak"}
+                                                </span>
                                             </>
                                         )}
                                     </button>
 
                                     {isListening && (
                                         <p className="text-xs text-red-400 font-semibold mt-4 animate-bounce">
-                                            🎙️ Listening... Speak clearly now.
+                                            🎙️ {selectedLang === "kn-IN" ? "ಕೇಳಿಸಿಕೊಳ್ಳುತ್ತಿದ್ದೇವೆ... ಈಗ ಮಾತನಾಡಿ." : "Listening... Speak clearly now."}
                                         </p>
                                     )}
                                 </div>
@@ -513,14 +568,16 @@ export default function SeniorDashboard() {
                                 {transcript && (
                                     <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800">
                                         <div className="flex items-center justify-between mb-2">
-                                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Speech Transcript</span>
+                                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                                                {selectedLang === "kn-IN" ? "ಧ್ವನಿ ಪಠ್ಯ" : "Speech Transcript"}
+                                            </span>
                                             <button
                                                 type="button"
                                                 onClick={() => speakText(transcript, "raw-transcript")}
                                                 className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
                                             >
                                                 <Volume2 className="w-3.5 h-3.5" />
-                                                <span>Listen</span>
+                                                <span>{selectedLang === "kn-IN" ? "ಆಲಿಸಿ" : "Listen"}</span>
                                             </button>
                                         </div>
                                         <p className="text-sm text-white italic">"{transcript}"</p>
@@ -535,12 +592,12 @@ export default function SeniorDashboard() {
                                                 {parsingVoice ? (
                                                     <>
                                                         <Loader2 className="w-4 h-4 animate-spin" />
-                                                        <span>Parsing Request...</span>
+                                                        <span>Processing...</span>
                                                     </>
                                                 ) : (
                                                     <>
                                                         <Sparkles className="w-4 h-4" />
-                                                        <span>Process Voice Request</span>
+                                                        <span>{selectedLang === "kn-IN" ? "ವಿಶ್ಲೇಷಿಸಿ" : "Process Voice Request"}</span>
                                                     </>
                                                 )}
                                             </button>
@@ -557,7 +614,7 @@ export default function SeniorDashboard() {
                                                 <h4 className="text-sm font-bold text-white">Parsed Voice Request Card</h4>
                                             </div>
                                             <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
-                                                🎙️ VOICE CHANNEL
+                                                🎙️ {selectedLang === "kn-IN" ? "ಕನ್ನಡ VOICE" : "VOICE CHANNEL"}
                                             </span>
                                         </div>
 
@@ -726,7 +783,10 @@ export default function SeniorDashboard() {
                         ) : (
                             <div className="space-y-4 max-h-[540px] overflow-y-auto pr-1">
                                 {requests.map((request) => {
-                                    const readAloudText = `Request for ${request.need}, located at ${request.location}, priority ${request.priority}, status ${request.status}.`;
+                                    const isKannada = selectedLang === "kn-IN";
+                                    const readAloudText = isKannada
+                                        ? `${request.need} ವಿನಂತಿ, ಸ್ಥಳ ${request.location}, ಆಧ್ಯತೆ ${request.priority}, ಸ್ಥಿತಿ ${request.status}.`
+                                        : `Request for ${request.need}, located at ${request.location}, priority ${request.priority}, status ${request.status}.`;
                                     const isVoiceReq = request.channel === "VOICE";
 
                                     return (
