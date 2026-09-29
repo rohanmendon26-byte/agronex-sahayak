@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ToastContainer, toast } from "react-toastify";
 import {
   HeartHandshake,
   LogOut,
@@ -16,8 +17,31 @@ import {
   RefreshCw,
   Loader2,
   Sparkles,
-  AlertCircle
+  AlertCircle,
+  Zap,
+  Navigation
 } from "lucide-react";
+import { calculateDistance } from "@/utils/distance";
+import DeleteButton from "@/components/DeleteButton";
+
+const getGpsMapUrl = (loc) => {
+    if (typeof loc === "object" && loc !== null && loc.lat && loc.lng) {
+        return `https://www.google.com/maps/dir/?api=1&destination=${loc.lat},${loc.lng}`;
+    }
+    const searchStr = typeof loc === "string" ? loc : [loc?.locality, loc?.city, loc?.state].filter(Boolean).join(", ") || "Shirva, Udupi";
+    return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(searchStr)}`;
+};
+
+const formatLocation = (loc) => {
+    if (!loc) return "Shirva, Udupi";
+    if (typeof loc === "string") return loc;
+    if (typeof loc === "object") {
+        const parts = [loc.locality, loc.city, loc.state, loc.addressLine].filter(Boolean);
+        if (parts.length > 0) return parts.join(", ");
+        return Object.values(loc).filter(v => typeof v === "string").join(", ") || "Shirva, Udupi";
+    }
+    return String(loc);
+};
 
 const getStatusStyle = (status) => {
     const normalized = String(status || "").toUpperCase();
@@ -41,6 +65,7 @@ export default function VolunteerDashboard() {
 
     const [user, setUser] = useState({ name: "Volunteer" });
     const [requests, setRequests] = useState([]);
+    const [activeNavSection, setActiveNavSection] = useState("ALL"); // "ALL" | "ASSIGNED" | "COMPLETED"
     const [available, setAvailable] = useState(true);
     const [loading, setLoading] = useState(true);
     const [updating, setUpdating] = useState("");
@@ -72,6 +97,7 @@ export default function VolunteerDashboard() {
                 const parsedUser = JSON.parse(savedUser);
                 if (parsedUser?.name) {
                     setUser(parsedUser);
+                    toast.info(`Welcome ${parsedUser.name}! Active as Volunteer Responder.`, { icon: "🤝" });
                 }
             }
         } catch (error) {
@@ -80,7 +106,91 @@ export default function VolunteerDashboard() {
 
         fetchVolunteerProfile();
         fetchRequests();
+        syncGpsLocation();
+
+        // 3-second auto-sync interval across devices/tabs
+        const intervalId = setInterval(() => {
+            fetchRequests(true);
+        }, 3000);
+
+        const handleStorageChange = (e) => {
+            if (e.key === "agronex_sync") {
+                fetchRequests(true);
+            }
+        };
+        window.addEventListener("storage", handleStorageChange);
+
+        return () => {
+            clearInterval(intervalId);
+            window.removeEventListener("storage", handleStorageChange);
+        };
     }, []);
+
+    const syncGpsLocation = async () => {
+        if (typeof window === "undefined" || !navigator.geolocation || !token) return;
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const { latitude, longitude } = position.coords;
+                let localityName = "Shirva, Udupi";
+
+                try {
+                    const geoRes = await fetch(
+                        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+                    );
+                    const geoData = await geoRes.json();
+                    if (geoData && geoData.address) {
+                        const addr = geoData.address;
+                        localityName =
+                            addr.suburb ||
+                            addr.village ||
+                            addr.town ||
+                            addr.city_district ||
+                            addr.county ||
+                            addr.city ||
+                            "Live GPS Pin";
+                    }
+                } catch (err) {
+                    console.warn("Reverse geocode failed:", err);
+                }
+
+                try {
+                    const locationObj = {
+                        locality: localityName,
+                        lat: latitude,
+                        lng: longitude
+                    };
+
+                    const res = await fetch(
+                        `${process.env.NEXT_PUBLIC_API_URL}/volunteers/location`,
+                        {
+                            method: "PATCH",
+                            headers: {
+                                "Content-Type": "application/json",
+                                Authorization: `Bearer ${token}`
+                            },
+                            body: JSON.stringify({ location: locationObj })
+                        }
+                    );
+                    if (res.ok) {
+                        notifySync();
+                        toast.success(`📍 Live GPS Broadcasted to Police: ${localityName}`, { icon: "📡" });
+                    }
+                } catch (error) {
+                    console.error("Failed to sync GPS location:", error);
+                }
+            },
+            (error) => {
+                console.warn("Geolocation access denied or unavailable:", error.message);
+            },
+            { enableHighAccuracy: true, timeout: 10000 }
+        );
+    };
+
+    const notifySync = () => {
+        if (typeof window !== "undefined") {
+            localStorage.setItem("agronex_sync", String(Date.now()));
+        }
+    };
 
     const fetchVolunteerProfile = async () => {
         try {
@@ -111,9 +221,9 @@ export default function VolunteerDashboard() {
         }
     };
 
-    const fetchRequests = async () => {
+    const fetchRequests = async (isSilent = false) => {
         try {
-            setLoading(true);
+            if (!isSilent) setLoading(true);
             setError("");
 
             const response = await fetch(
@@ -135,9 +245,9 @@ export default function VolunteerDashboard() {
 
             setRequests(data.data || []);
         } catch (err) {
-            setError(err.message);
+            if (!isSilent) setError(err.message);
         } finally {
-            setLoading(false);
+            if (!isSilent) setLoading(false);
         }
     };
 
@@ -169,11 +279,60 @@ export default function VolunteerDashboard() {
                 );
             }
 
-            setMessage(`Request status updated to ${status}.`);
+            let statusMsg = `Request status updated to ${status}.`;
+            if (status === "IN_PROGRESS") {
+                statusMsg = "🚗 Task started! Proceeding to senior location...";
+                toast.info(statusMsg);
+            } else if (status === "COMPLETED") {
+                statusMsg = "🎉 Assistance task COMPLETED! Great job!";
+                toast.success(statusMsg);
+            } else {
+                toast.success(statusMsg);
+            }
+            setMessage(statusMsg);
 
+            notifySync();
             fetchRequests();
         } catch (err) {
             setError(err.message);
+            toast.error(err.message || "Failed to update status");
+        } finally {
+            setUpdating("");
+        }
+    };
+
+    const handleDeleteRequest = async (requestId) => {
+        if (typeof window !== "undefined" && !window.confirm("Are you sure you want to delete this request?")) return;
+
+        setUpdating(requestId);
+        setError("");
+        setMessage("");
+
+        try {
+            const response = await fetch(
+                `${process.env.NEXT_PUBLIC_API_URL}/requests/${requestId}`,
+                {
+                    method: "DELETE",
+                    headers: {
+                        Authorization: `Bearer ${token}`
+                    }
+                }
+            );
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data?.error?.message || "Failed to delete request");
+            }
+
+            const deleteMsg = "Assistance request deleted successfully.";
+            setMessage(deleteMsg);
+            toast.success(deleteMsg);
+            notifySync();
+            fetchRequests();
+        } catch (err) {
+            setError(err.message);
+            toast.error(err.message || "Failed to delete request");
         } finally {
             setUpdating("");
         }
@@ -210,11 +369,18 @@ export default function VolunteerDashboard() {
             const nextAvailability = data?.data?.availability ?? !available;
             setAvailable(nextAvailability);
 
-            setMessage(
-                `Status updated: You are now ${nextAvailability ? "Available for requests" : "Unavailable (Away)"}.`
-            );
+            if (nextAvailability) {
+                const availMsg = "🟢 Status set to AVAILABLE! Ready for senior citizen requests.";
+                setMessage(availMsg);
+                toast.success(availMsg);
+            } else {
+                const unavailMsg = "🟡 Status set to UNAVAILABLE (Away).";
+                setMessage(unavailMsg);
+                toast.warn(unavailMsg);
+            }
         } catch (err) {
             setError(err.message);
+            toast.error(err.message || "Failed to update availability");
         }
     };
 
@@ -347,6 +513,48 @@ export default function VolunteerDashboard() {
                     </div>
                 </div>
 
+                {/* Volunteer Domain Navigation Tabs */}
+                <div className="flex flex-wrap items-center gap-2 p-1.5 bg-slate-900/90 border border-slate-800 rounded-2xl mb-8 shadow-inner">
+                    <button
+                        type="button"
+                        onClick={() => setActiveNavSection("ALL")}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                            activeNavSection === "ALL"
+                                ? "bg-violet-500 text-slate-950 shadow-md shadow-violet-500/20"
+                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                        }`}
+                    >
+                        <Sparkles className="w-4 h-4" />
+                        <span>All Requests ({requests.length})</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => setActiveNavSection("ASSIGNED")}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                            activeNavSection === "ASSIGNED"
+                                ? "bg-violet-500 text-slate-950 shadow-md shadow-violet-500/20"
+                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                        }`}
+                    >
+                        <Clock className="w-4 h-4" />
+                        <span>⚡ Active Assigned Tasks ({requests.filter(r => r.status !== 'COMPLETED').length})</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => setActiveNavSection("COMPLETED")}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                            activeNavSection === "COMPLETED"
+                                ? "bg-violet-500 text-slate-950 shadow-md shadow-violet-500/20"
+                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                        }`}
+                    >
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>📜 Task History ({countCompleted})</span>
+                    </button>
+                </div>
+
                 {/* Request List Feed */}
                 <section className="glass-panel border border-slate-800 rounded-3xl p-6 sm:p-7 shadow-xl">
                     <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800/80">
@@ -361,7 +569,11 @@ export default function VolunteerDashboard() {
                         </div>
 
                         <span className="px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs text-slate-300 font-semibold">
-                            {requests.length} Total
+                            {requests.filter(r => {
+                                if (activeNavSection === "ASSIGNED") return r.status !== "COMPLETED";
+                                if (activeNavSection === "COMPLETED") return r.status === "COMPLETED";
+                                return true;
+                            }).length} Displayed
                         </span>
                     </div>
 
@@ -370,15 +582,23 @@ export default function VolunteerDashboard() {
                             <Loader2 className="w-8 h-8 animate-spin text-emerald-400" />
                             <p className="text-sm">Fetching request queue...</p>
                         </div>
-                    ) : requests.length === 0 ? (
+                    ) : requests.filter(r => {
+                        if (activeNavSection === "ASSIGNED") return r.status !== "COMPLETED";
+                        if (activeNavSection === "COMPLETED") return r.status === "COMPLETED";
+                        return true;
+                    }).length === 0 ? (
                         <div className="text-center py-16 text-slate-500">
                             <ShieldCheck className="w-12 h-12 mx-auto text-slate-700 mb-3" />
-                            <p className="text-sm">No assistance requests currently assigned.</p>
-                            <p className="text-xs text-slate-600 mt-1">Make sure your status is set to Available.</p>
+                            <p className="text-sm">No assistance requests match selected section.</p>
+                            <p className="text-xs text-slate-600 mt-1">Check another section or refresh your feed.</p>
                         </div>
                     ) : (
                         <div className="space-y-4">
-                            {requests.map((request) => (
+                            {requests.filter(r => {
+                                if (activeNavSection === "ASSIGNED") return r.status !== "COMPLETED";
+                                if (activeNavSection === "COMPLETED") return r.status === "COMPLETED";
+                                return true;
+                            }).map((request) => (
                                 <div
                                     key={request._id}
                                     className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-slate-700 transition"
@@ -389,9 +609,15 @@ export default function VolunteerDashboard() {
                                                 {request.need}
                                             </h4>
 
-                                            <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-1.5">
-                                                <MapPin className="w-3.5 h-3.5 text-slate-500" />
-                                                <span>Location: {request.location}</span>
+                                            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400 mt-1.5">
+                                                <div className="flex items-center gap-1.5">
+                                                    <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+                                                    <span>Location: {formatLocation(request.location)}</span>
+                                                </div>
+                                                <span className="text-[11px] font-mono text-emerald-300 bg-emerald-500/15 px-2.5 py-0.5 rounded-full border border-emerald-500/30 font-semibold flex items-center gap-1">
+                                                    <Zap className="w-3 h-3 text-emerald-400" />
+                                                    {calculateDistance(request.location, "Shirva")} km away
+                                                </span>
                                             </div>
 
                                             <p className="text-[11px] text-slate-600 font-mono mt-2">
@@ -416,12 +642,18 @@ export default function VolunteerDashboard() {
                                         </div>
                                     </div>
 
-                                    <div className="flex items-center justify-between mt-5 pt-4 border-t border-slate-800/80">
-                                        <span className="text-xs text-slate-500">
-                                            Created: {new Date(request.createdAt).toLocaleDateString()}
-                                        </span>
+                                    <div className="flex flex-wrap items-center justify-between gap-3 mt-5 pt-4 border-t border-slate-800/80">
+                                        <a
+                                            href={getGpsMapUrl(request.location)}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 text-xs font-bold transition shadow-sm"
+                                        >
+                                            <Navigation className="w-3.5 h-3.5 text-emerald-400" />
+                                            <span>🗺️ Open Live GPS Navigation</span>
+                                        </a>
 
-                                        <div>
+                                        <div className="flex items-center gap-2">
                                             {request.status === "ASSIGNED" && (
                                                 <button
                                                     onClick={() => updateStatus(request._id, "IN_PROGRESS")}
@@ -458,6 +690,12 @@ export default function VolunteerDashboard() {
                                                     Assistance Completed
                                                 </span>
                                             )}
+
+                                            <DeleteButton
+                                                onClick={() => handleDeleteRequest(request._id)}
+                                                disabled={updating === request._id}
+                                                title="Delete Request"
+                                            />
                                         </div>
                                     </div>
                                 </div>
@@ -466,6 +704,7 @@ export default function VolunteerDashboard() {
                     )}
                 </section>
             </div>
+            <ToastContainer theme="dark" position="top-right" autoClose={3000} />
         </main>
     );
 }

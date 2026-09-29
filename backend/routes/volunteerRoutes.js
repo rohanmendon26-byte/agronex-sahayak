@@ -8,7 +8,9 @@ const {
     getVolunteers,
     verifyVolunteer,
     activateVolunteer,
-    updateAvailability
+    updateAvailability,
+    updateLocation,
+    deleteVolunteer
 } = require("../controllers/volunteerController");
 
 const router = express.Router();
@@ -46,6 +48,20 @@ router.patch(
     authenticate,
     authorize("VOLUNTEER"),
     updateAvailability
+);
+
+router.patch(
+    "/location",
+    authenticate,
+    authorize("VOLUNTEER"),
+    updateLocation
+);
+
+router.delete(
+    "/:id",
+    authenticate,
+    authorize("POLICE_ADMIN"),
+    deleteVolunteer
 );
 
 module.exports = router;

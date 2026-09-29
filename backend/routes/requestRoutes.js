@@ -7,7 +7,8 @@ const {
     createRequest,
     getRequests,
     assignVolunteer,
-    updateRequestStatus
+    updateRequestStatus,
+    deleteRequest
 } = require("../controllers/requestController");
 
 const router = express.Router();
@@ -38,6 +39,13 @@ router.patch(
     authenticate,
     authorize("VOLUNTEER", "POLICE_ADMIN"),
     updateRequestStatus
+);
+
+router.delete(
+    "/:id",
+    authenticate,
+    authorize("SENIOR", "POLICE_ADMIN"),
+    deleteRequest
 );
 
 module.exports = router;

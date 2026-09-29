@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { ToastContainer, toast } from "react-toastify";
 import { 
   HeartHandshake, 
   ShieldCheck, 
@@ -69,6 +70,8 @@ export default function Home() {
             localStorage.setItem("agronex_role", loggedInRole);
             localStorage.setItem("agronex_user", JSON.stringify(loggedInUser));
 
+            toast.success(`Welcome back, ${loggedInUser.name || "User"}! Logging in...`);
+
             if (loggedInRole === "SENIOR") {
                 router.push("/senior");
             } else if (loggedInRole === "VOLUNTEER") {
@@ -78,6 +81,7 @@ export default function Home() {
             }
         } catch (err) {
             setError(err.message);
+            toast.error(err.message || "Login failed");
         } finally {
             setLoading(false);
         }
@@ -240,6 +244,7 @@ export default function Home() {
                     Encrypted & Secure • AgroNex Sahayak
                 </p>
             </div>
+            <ToastContainer theme="dark" position="top-right" autoClose={3000} />
         </main>
     );
 }

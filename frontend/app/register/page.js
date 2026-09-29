@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { ToastContainer, toast } from "react-toastify";
 import {
   HeartHandshake,
   User,
@@ -72,12 +73,14 @@ export default function Register() {
             }
 
             setSuccess(true);
+            toast.success("Account created successfully! Redirecting to login...");
 
             setTimeout(() => {
                 router.push("/");
             }, 1500);
         } catch (err) {
             setError(err.message);
+            toast.error(err.message || "Registration failed");
         } finally {
             setLoading(false);
         }
@@ -306,6 +309,7 @@ export default function Register() {
                     </div>
                 </form>
             </div>
+            <ToastContainer theme="dark" position="top-right" autoClose={3000} />
         </main>
     );
 }

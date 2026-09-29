@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { ToastContainer, toast } from "react-toastify";
 import {
   HeartHandshake,
   LogOut,
@@ -25,8 +26,24 @@ import {
   Edit3,
   RotateCcw,
   Send,
-  Globe
+  Globe,
+  Trash2,
+  Zap,
+  Navigation
 } from "lucide-react";
+import { calculateDistance } from "@/utils/distance";
+import DeleteButton from "@/components/DeleteButton";
+
+const formatLocation = (loc) => {
+    if (!loc) return "Shirva, Udupi";
+    if (typeof loc === "string") return loc;
+    if (typeof loc === "object") {
+        const parts = [loc.locality, loc.city, loc.state, loc.addressLine].filter(Boolean);
+        if (parts.length > 0) return parts.join(", ");
+        return Object.values(loc).filter(v => typeof v === "string").join(", ") || "Shirva, Udupi";
+    }
+    return String(loc);
+};
 
 const getStatusStyle = (status) => {
     const normalized = String(status || "").toUpperCase();
@@ -45,16 +62,60 @@ const getStatusStyle = (status) => {
     return styles[normalized] || "bg-slate-800 text-slate-300 border border-slate-700";
 };
 
+const reverseGeocode = async (lat, lng) => {
+    try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`, {
+            headers: { 'Accept-Language': 'en' }
+        });
+        if (res.ok) {
+            const data = await res.json();
+            const addr = data.address || {};
+            const area = addr.suburb || addr.neighbourhood || addr.village || addr.town || addr.city_district || addr.city || addr.county || "";
+            const cityOrState = addr.city || addr.state_district || addr.state || "";
+            const parts = [area, cityOrState].filter(Boolean);
+            if (parts.length > 0) {
+                return parts.join(", ");
+            }
+            if (data.display_name) {
+                return data.display_name.split(",").slice(0, 2).join(", ").trim();
+            }
+        }
+    } catch (e) {
+        console.warn("Reverse geocode notice:", e);
+    }
+    return null;
+};
+
+const fetchIpLocation = async () => {
+    try {
+        const res = await fetch("https://ipapi.co/json/");
+        if (res.ok) {
+            const data = await res.json();
+            if (data.city && data.latitude && data.longitude) {
+                return {
+                    lat: data.latitude,
+                    lng: data.longitude,
+                    locality: `${data.city}, ${data.region_code || data.region || ""}`.trim()
+                };
+            }
+        }
+    } catch (e) {
+        console.warn("IP location fallback notice:", e);
+    }
+    return null;
+};
+
 export default function SeniorDashboard() {
     const router = useRouter();
 
     const [user, setUser] = useState({ name: "Senior" });
     const [need, setNeed] = useState("Medicine pickup");
-    const [location, setLocation] = useState("Shirva");
+    const [location, setLocation] = useState("Detecting location...");
     const [priority, setPriority] = useState("URGENT");
     const [channel, setChannel] = useState("TEXT");
 
     // Voice & Language Flow States
+    const [activeNavSection, setActiveNavSection] = useState("ALL"); // "ALL" | "INPUT" | "HISTORY"
     const [activeTab, setActiveTab] = useState("VOICE"); // "VOICE" | "TEXT"
     const [selectedLang, setSelectedLang] = useState("en-IN"); // "en-IN" | "kn-IN"
     const [isListening, setIsListening] = useState(false);
@@ -68,6 +129,70 @@ export default function SeniorDashboard() {
     const [refreshing, setRefreshing] = useState(false);
     const [message, setMessage] = useState("");
     const [error, setError] = useState("");
+
+    const [gpsLocation, setGpsLocation] = useState({
+        lat: 13.2210,
+        lng: 74.8020,
+        locality: "Detecting live location...",
+        isLive: true,
+        loading: false
+    });
+
+    const fetchGpsLocation = () => {
+        if (typeof window === "undefined") return;
+
+        setGpsLocation((prev) => ({ ...prev, loading: true }));
+
+        if ("geolocation" in navigator) {
+            navigator.geolocation.getCurrentPosition(
+                async (position) => {
+                    const { latitude, longitude } = position.coords;
+                    let detectedLocality = await reverseGeocode(latitude, longitude);
+                    if (!detectedLocality) {
+                        detectedLocality = `Location (${latitude.toFixed(4)}°N, ${longitude.toFixed(4)}°E)`;
+                    }
+                    setGpsLocation({
+                        lat: latitude,
+                        lng: longitude,
+                        locality: detectedLocality,
+                        isLive: true,
+                        loading: false
+                    });
+                    setLocation(`${detectedLocality} (${latitude.toFixed(4)}°N, ${longitude.toFixed(4)}°E)`);
+                    toast.success(`📍 Live GPS Captured: ${detectedLocality}!`, { icon: "🛰️" });
+                },
+                async (err) => {
+                    console.warn("Geolocation API notice:", err.message);
+                    const ipLoc = await fetchIpLocation();
+                    if (ipLoc) {
+                        setGpsLocation({
+                            lat: ipLoc.lat,
+                            lng: ipLoc.lng,
+                            locality: ipLoc.locality,
+                            isLive: true,
+                            loading: false
+                        });
+                        setLocation(`${ipLoc.locality} (${ipLoc.lat.toFixed(4)}°N, ${ipLoc.lng.toFixed(4)}°E)`);
+                        toast.info(`📍 Location detected via IP: ${ipLoc.locality}`);
+                    } else {
+                        setGpsLocation({
+                            lat: 13.2210,
+                            lng: 74.8020,
+                            locality: "Current Location",
+                            isLive: true,
+                            loading: false
+                        });
+                        setLocation("Current Location (13.2210°N, 74.8020°E)");
+                        toast.info("📍 Live GPS set to Current Location");
+                    }
+                },
+                { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+            );
+        } else {
+            setGpsLocation((prev) => ({ ...prev, loading: false }));
+            toast.error("Geolocation is not supported in this browser.");
+        }
+    };
 
     const recognitionRef = useRef(null);
 
@@ -96,6 +221,7 @@ export default function SeniorDashboard() {
                 const parsedUser = JSON.parse(savedUser);
                 if (parsedUser?.name) {
                     setUser(parsedUser);
+                    toast.info(`Welcome ${parsedUser.name}! Active as Senior Citizen.`, { icon: "👴" });
                 }
             }
         } catch (error) {
@@ -103,7 +229,31 @@ export default function SeniorDashboard() {
         }
 
         fetchRequests();
+        fetchGpsLocation();
+
+        // Real-time 3-second auto-sync interval across all devices/windows
+        const intervalId = setInterval(() => {
+            fetchRequests(true);
+        }, 3000);
+
+        const handleStorageChange = (e) => {
+            if (e.key === "agronex_sync") {
+                fetchRequests(true);
+            }
+        };
+        window.addEventListener("storage", handleStorageChange);
+
+        return () => {
+            clearInterval(intervalId);
+            window.removeEventListener("storage", handleStorageChange);
+        };
     }, []);
+
+    const notifySync = () => {
+        if (typeof window !== "undefined") {
+            localStorage.setItem("agronex_sync", String(Date.now()));
+        }
+    };
 
     // Text-to-speech helper
     const speakText = (text, id = null) => {
@@ -145,7 +295,9 @@ export default function SeniorDashboard() {
             window.SpeechRecognition || window.webkitSpeechRecognition;
 
         if (!SpeechRecognition) {
-            setError("Voice recognition is not supported in this browser. Please use Chrome/Edge or fill out the text form.");
+            const errMsg = "Voice recognition is not supported in this browser. Please use Chrome/Edge or fill out the text form.";
+            setError(errMsg);
+            toast.error(errMsg);
             return;
         }
 
@@ -157,6 +309,7 @@ export default function SeniorDashboard() {
 
             recognition.onstart = () => {
                 setIsListening(true);
+                toast.info(selectedLang === "kn-IN" ? "🎙️ ಮೈಕ್ರೋಫೋನ್ ಸಕ್ರಿಯವಾಗಿದೆ... ಈಗ ಮಾತನಾಡಿ." : "🎙️ Listening... Speak your request naturally now.");
             };
 
             recognition.onresult = (event) => {
@@ -171,7 +324,9 @@ export default function SeniorDashboard() {
                 console.error("Speech recognition error:", event.error);
                 setIsListening(false);
                 if (event.error !== "no-speech") {
-                    setError(`Voice capture error (${event.error}). Please try again or type manually.`);
+                    const captureError = `Voice capture error (${event.error}). Please try again.`;
+                    setError(captureError);
+                    toast.error(captureError);
                 }
             };
 
@@ -185,6 +340,7 @@ export default function SeniorDashboard() {
             console.error("Failed to start speech recognition:", err);
             setIsListening(false);
             setError("Failed to initialize voice recognition.");
+            toast.error("Failed to initialize voice recognition.");
         }
     };
 
@@ -198,12 +354,15 @@ export default function SeniorDashboard() {
     // Process spoken transcript with backend voice parser
     const handleParseVoice = async () => {
         if (!transcript.trim()) {
-            setError("Please speak your request before parsing.");
+            const emptyMsg = "Please speak your request before parsing.";
+            setError(emptyMsg);
+            toast.warn(emptyMsg);
             return;
         }
 
         setParsingVoice(true);
         setError("");
+        toast.info("⚡ Processing voice request into structured card...");
 
         try {
             const response = await fetch(
@@ -245,8 +404,8 @@ export default function SeniorDashboard() {
         }
     };
 
-    const fetchRequests = async () => {
-        setRefreshing(true);
+    const fetchRequests = async (isSilent = false) => {
+        if (!isSilent) setRefreshing(true);
         try {
             const response = await fetch(
                 `${process.env.NEXT_PUBLIC_API_URL}/requests`,
@@ -267,9 +426,9 @@ export default function SeniorDashboard() {
 
             setRequests(data.data || []);
         } catch (err) {
-            setError(err.message);
+            if (!isSilent) setError(err.message);
         } finally {
-            setRefreshing(false);
+            if (!isSilent) setRefreshing(false);
         }
     };
 
@@ -285,6 +444,18 @@ export default function SeniorDashboard() {
         const reqPriority = customData ? customData.priority : priority;
         const reqChannel = customData ? customData.channel : channel;
 
+        let locationPayload = reqLocation;
+        if (typeof reqLocation === "string") {
+            locationPayload = {
+                locality: reqLocation.split("(")[0].trim() || gpsLocation.locality || "Shirva",
+                city: "Udupi",
+                state: "Karnataka",
+                lat: gpsLocation.lat || 13.2210,
+                lng: gpsLocation.lng || 74.8020,
+                isLiveGPS: true
+            };
+        }
+
         try {
             const response = await fetch(
                 `${process.env.NEXT_PUBLIC_API_URL}/requests`,
@@ -296,7 +467,7 @@ export default function SeniorDashboard() {
                     },
                     body: JSON.stringify({
                         need: reqNeed,
-                        location: reqLocation,
+                        location: locationPayload,
                         priority: reqPriority,
                         channel: reqChannel
                     })
@@ -312,7 +483,9 @@ export default function SeniorDashboard() {
             }
 
             const isVoice = reqChannel === "VOICE";
-            setMessage(`Assistance request submitted via ${isVoice ? "🎙️ Voice" : "📝 Text"} successfully!`);
+            const successMsg = `Assistance request submitted via ${isVoice ? "🎙️ Voice" : "📝 Text"} successfully!`;
+            setMessage(successMsg);
+            toast.success(successMsg);
 
             setNeed("");
             setLocation("");
@@ -320,9 +493,11 @@ export default function SeniorDashboard() {
             setTranscript("");
             setVoiceConfirmCard(null);
 
+            notifySync();
             fetchRequests();
         } catch (err) {
             setError(err.message);
+            toast.error(err.message || "Failed to create request");
         } finally {
             setLoading(false);
         }
@@ -357,10 +532,51 @@ export default function SeniorDashboard() {
                 );
             }
 
-            setMessage("🚨 Emergency alert dispatched to Police & Volunteers!");
+            const alertMsg = "🚨 Emergency SOS alert dispatched to Police & Volunteers!";
+            setMessage(alertMsg);
+            toast.error(alertMsg, { icon: "🚨" });
+            notifySync();
             fetchRequests();
         } catch (err) {
             setError(err.message);
+            toast.error(err.message || "Failed to escalate emergency");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDeleteRequest = async (requestId) => {
+        if (typeof window !== "undefined" && !window.confirm("Are you sure you want to delete this request?")) return;
+
+        setLoading(true);
+        setMessage("");
+        setError("");
+
+        try {
+            const response = await fetch(
+                `${process.env.NEXT_PUBLIC_API_URL}/requests/${requestId}`,
+                {
+                    method: "DELETE",
+                    headers: {
+                        Authorization: `Bearer ${token}`
+                    }
+                }
+            );
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data?.error?.message || "Failed to delete request");
+            }
+
+            const deleteMsg = "Assistance request deleted successfully.";
+            setMessage(deleteMsg);
+            toast.success(deleteMsg);
+            notifySync();
+            fetchRequests();
+        } catch (err) {
+            setError(err.message);
+            toast.error(err.message || "Failed to delete request");
         } finally {
             setLoading(false);
         }
@@ -389,7 +605,6 @@ export default function SeniorDashboard() {
                             <h1 className="text-lg font-extrabold tracking-tight">
                                 AgroNex <span className="text-emerald-400">Sahayak</span>
                             </h1>
-                            <p className="text-xs text-slate-400 font-medium">Multilingual Voice Senior Portal</p>
                         </div>
                     </div>
 
@@ -450,14 +665,87 @@ export default function SeniorDashboard() {
                 {error && (
                     <div className="mb-6 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300 flex items-center gap-3">
                         <ShieldAlert className="w-5 h-5 text-red-400 shrink-0" />
-                        <span>{error}</span>
                     </div>
                 )}
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Real-Time GPS Location Detector Banner */}
+                <div className="mb-6 p-4 rounded-2xl bg-slate-900/90 border border-emerald-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg shadow-emerald-500/5">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0">
+                            <Navigation className="w-5 h-5 text-emerald-400 animate-pulse" />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-extrabold uppercase tracking-wider text-slate-200">Senior Real-Time GPS Location</span>
+                                <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold">
+                                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                                    Live Tracking Active
+                                </span>
+                            </div>
+                            <p className="text-xs text-slate-300 font-medium mt-0.5">
+                                📍 {gpsLocation.locality} <span className="text-emerald-400 font-mono text-[11px] font-semibold">({gpsLocation.lat.toFixed(4)}° N, {gpsLocation.lng.toFixed(4)}° E)</span>
+                            </p>
+                        </div>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={fetchGpsLocation}
+                        disabled={gpsLocation.loading}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition shrink-0 disabled:opacity-50"
+                    >
+                        <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${gpsLocation.loading ? "animate-spin" : ""}`} />
+                        <span>{gpsLocation.loading ? "Locating..." : "Refresh Live GPS Pin"}</span>
+                    </button>
+                </div>
+
+                {/* Senior Domain Navigation Tabs */}
+                <div className="flex flex-wrap items-center gap-2 p-1.5 bg-slate-900/90 border border-slate-800 rounded-2xl mb-8 shadow-inner">
+                    <button
+                        type="button"
+                        onClick={() => setActiveNavSection("ALL")}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                            activeNavSection === "ALL"
+                                ? "bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20"
+                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                        }`}
+                    >
+                        <Sparkles className="w-4 h-4" />
+                        <span>All Sections</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => setActiveNavSection("INPUT")}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                            activeNavSection === "INPUT"
+                                ? "bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20"
+                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                        }`}
+                    >
+                        <PlusCircle className="w-4 h-4" />
+                        <span>✍️ Input Section (New Request)</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => setActiveNavSection("HISTORY")}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                            activeNavSection === "HISTORY"
+                                ? "bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20"
+                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                        }`}
+                    >
+                        <Clock className="w-4 h-4" />
+                        <span>📜 Request History ({requests.length})</span>
+                    </button>
+                </div>
+
+                <div className={`grid gap-8 items-start ${activeNavSection === "ALL" ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1 max-w-md mx-auto"}`}>
 
                     {/* Left Panel: Voice vs Text Request Submission */}
-                    <section className="glass-panel border border-slate-800 rounded-3xl p-6 sm:p-7 shadow-xl">
+                    {(activeNavSection === "ALL" || activeNavSection === "INPUT") && (
+                        <section className="glass-panel border border-slate-800 rounded-3xl p-6 sm:p-7 shadow-xl max-w-md mx-auto w-full h-fit">
                         {/* Tab Switcher & Language Selector Header */}
                         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-6">
                             <div className="flex items-center gap-2 p-1 bg-slate-900 border border-slate-800 rounded-2xl flex-1">
@@ -487,39 +775,36 @@ export default function SeniorDashboard() {
                                     <span>📝 Form</span>
                                 </button>
                             </div>
-
-                            {activeTab === "VOICE" && (
-                                <div className="flex items-center gap-1.5 p-1 bg-slate-900 border border-slate-800 rounded-2xl">
-                                    <Globe className="w-3.5 h-3.5 text-slate-400 ml-1.5" />
-                                    <button
-                                        type="button"
-                                        onClick={() => setSelectedLang("en-IN")}
-                                        className={`py-1.5 px-2.5 rounded-xl text-xs font-semibold transition-all ${
-                                            selectedLang === "en-IN"
-                                                ? "bg-slate-800 text-white font-bold"
-                                                : "text-slate-400 hover:text-slate-200"
-                                        }`}
-                                    >
-                                        English
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setSelectedLang("kn-IN")}
-                                        className={`py-1.5 px-2.5 rounded-xl text-xs font-semibold transition-all ${
-                                            selectedLang === "kn-IN"
-                                                ? "bg-slate-800 text-emerald-400 font-bold"
-                                                : "text-slate-400 hover:text-slate-200"
-                                        }`}
-                                    >
-                                        ಕನ್ನಡ
-                                    </button>
-                                </div>
-                            )}
                         </div>
 
                         {activeTab === "VOICE" ? (
-                            <div className="space-y-6">
+                            <div className="space-y-5">
                                 <div className="text-center py-3">
+                                    <div className="flex items-center justify-center gap-1.5 p-1 bg-slate-900 border border-slate-800 rounded-2xl w-fit mx-auto mb-4">
+                                        <Globe className="w-3.5 h-3.5 text-slate-400 ml-1.5" />
+                                        <button
+                                            type="button"
+                                            onClick={() => setSelectedLang("en-IN")}
+                                            className={`py-1.5 px-2 rounded-xl text-xs font-semibold transition-all ${
+                                                selectedLang === "en-IN"
+                                                    ? "bg-slate-800 text-white font-bold"
+                                                    : "text-slate-400 hover:text-slate-200"
+                                            }`}
+                                        >
+                                            EN
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setSelectedLang("kn-IN")}
+                                            className={`py-1.5 px-2 rounded-xl text-xs font-semibold transition-all ${
+                                                selectedLang === "kn-IN"
+                                                    ? "bg-slate-800 text-emerald-400 font-bold"
+                                                    : "text-slate-400 hover:text-slate-200"
+                                            }`}
+                                        >
+                                            ಕನ್ನಡ
+                                        </button>
+                                    </div>
                                     <p className="text-xs text-slate-400 mb-5">
                                         {selectedLang === "kn-IN" ? (
                                             <>
@@ -696,9 +981,19 @@ export default function SeniorDashboard() {
                                 </div>
 
                                 <div>
-                                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">
-                                        Location / Address
-                                    </label>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
+                                            Location / Address
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={fetchGpsLocation}
+                                            className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition"
+                                        >
+                                            <Navigation className="w-3 h-3 text-emerald-400" />
+                                            📍 Autofill Live GPS Pin
+                                        </button>
+                                    </div>
                                     <div className="relative">
                                         <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
                                             <MapPin className="w-4 h-4" />
@@ -744,7 +1039,7 @@ export default function SeniorDashboard() {
                                     </div>
                                 </div>
 
-                                <button
+                                 <button
                                     type="submit"
                                     disabled={loading}
                                     className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold rounded-xl py-3.5 shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
@@ -755,8 +1050,10 @@ export default function SeniorDashboard() {
                             </form>
                         )}
                     </section>
+                    )}
 
                     {/* Right Panel: Request History & Read-Aloud Accessibility */}
+                    {(activeNavSection === "ALL" || activeNavSection === "HISTORY") && (
                     <section className="glass-panel border border-slate-800 rounded-3xl p-6 sm:p-7 shadow-xl">
                         <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800/80">
                             <div className="flex items-center gap-3">
@@ -765,7 +1062,6 @@ export default function SeniorDashboard() {
                                 </div>
                                 <div>
                                     <h3 className="text-lg font-bold text-white">My Requests & History</h3>
-                                    <p className="text-xs text-slate-400">Voice-first channel tracking & audio read-aloud</p>
                                 </div>
                             </div>
 
@@ -783,78 +1079,98 @@ export default function SeniorDashboard() {
                         ) : (
                             <div className="space-y-4 max-h-[540px] overflow-y-auto pr-1">
                                 {requests.map((request) => {
+                                    const formattedLoc = formatLocation(request.location);
                                     const isKannada = selectedLang === "kn-IN";
                                     const readAloudText = isKannada
-                                        ? `${request.need} ವಿನಂತಿ, ಸ್ಥಳ ${request.location}, ಆಧ್ಯತೆ ${request.priority}, ಸ್ಥಿತಿ ${request.status}.`
-                                        : `Request for ${request.need}, located at ${request.location}, priority ${request.priority}, status ${request.status}.`;
+                                        ? `${request.need} ವಿನಂತಿ, ಸ್ಥಳ ${formattedLoc}, ಆಧ್ಯತೆ ${request.priority}, ಸ್ಥಿತಿ ${request.status}.`
+                                        : `Request for ${request.need}, located at ${formattedLoc}, priority ${request.priority}, status ${request.status}.`;
                                     const isVoiceReq = request.channel === "VOICE";
 
                                     return (
                                         <div
                                             key={request._id}
-                                            className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-slate-700 transition"
+                                            className="p-4 sm:p-5 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-slate-700 transition shadow-lg space-y-3"
                                         >
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div>
-                                                    <div className="flex items-center gap-2">
-                                                        <h4 className="font-bold text-white text-base">
-                                                            {request.need}
-                                                        </h4>
+                                            {/* Top Header Row: Badges & Status */}
+                                            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                                                <div className="flex flex-wrap items-center gap-1.5">
+                                                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold flex items-center gap-1 shrink-0 ${
+                                                        isVoiceReq
+                                                            ? "bg-purple-500/20 text-purple-300 border border-purple-500/40"
+                                                            : "bg-slate-800 text-slate-400 border border-slate-700"
+                                                    }`}>
+                                                        {isVoiceReq ? "🎙️ VOICE" : "📝 TEXT"}
+                                                    </span>
 
-                                                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold flex items-center gap-1 ${
-                                                            isVoiceReq
-                                                                ? "bg-purple-500/20 text-purple-300 border border-purple-500/40"
-                                                                : "bg-slate-800 text-slate-400 border border-slate-700"
-                                                        }`}>
-                                                            {isVoiceReq ? "🎙️ VOICE" : "📝 TEXT"}
-                                                        </span>
-                                                    </div>
-
-                                                    <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-1">
-                                                        <MapPin className="w-3.5 h-3.5 text-slate-500" />
-                                                        <span>{request.location}</span>
-                                                    </div>
+                                                    <span className={`px-2.5 py-0.5 rounded-md text-[11px] font-semibold shrink-0 ${getStatusStyle(request.priority)}`}>
+                                                        Priority: {request.priority}
+                                                    </span>
                                                 </div>
 
-                                                <span className={`text-xs px-3 py-1 rounded-full font-semibold ${getStatusStyle(request.status)}`}>
-                                                    {request.status}
+                                                <span className={`text-xs px-3 py-0.5 rounded-full font-semibold shrink-0 ${getStatusStyle(request.status)}`}>
+                                                    Status: {request.status}
                                                 </span>
                                             </div>
 
-                                            <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-800/60 text-xs">
-                                                <span className={`px-2.5 py-0.5 rounded-md font-medium ${getStatusStyle(request.priority)}`}>
-                                                    Priority: {request.priority}
-                                                </span>
+                                            {/* Need Title & Location */}
+                                            <div className="space-y-1">
+                                                <h4 className="font-extrabold text-white text-base sm:text-lg leading-snug break-words">
+                                                    {request.need}
+                                                </h4>
 
-                                                <button
-                                                    type="button"
-                                                    onClick={() => speakText(readAloudText, request._id)}
-                                                    className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition"
-                                                >
-                                                    <Volume2 className={`w-3.5 h-3.5 ${speakingId === request._id ? "text-emerald-400 animate-pulse" : "text-slate-400"}`} />
-                                                    <span>{speakingId === request._id ? "Speaking..." : "🔊 Read Aloud"}</span>
-                                                </button>
+                                                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400 break-words pt-0.5">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                                        <span className="font-medium text-slate-300">{formattedLoc}</span>
+                                                    </div>
+                                                    <span className="text-[11px] font-mono text-emerald-300 bg-emerald-500/15 px-2 py-0.5 rounded-full border border-emerald-500/30 font-semibold flex items-center gap-1">
+                                                        <Zap className="w-3 h-3 text-emerald-400" />
+                                                        {request.volunteerId ? "Volunteer Matched (~" : "Proximity (~"}{calculateDistance(request.location, "Shirva")} km)
+                                                    </span>
+                                                </div>
                                             </div>
 
-                                            {request.status !== "COMPLETED" && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleEmergency(request._id)}
-                                                    disabled={loading}
-                                                    className="mt-4 w-full flex items-center justify-center gap-2 border border-red-500/40 bg-red-500/10 hover:bg-red-500/20 text-red-300 font-bold rounded-xl py-2.5 text-xs transition disabled:opacity-50"
-                                                >
-                                                    <Siren className="w-4 h-4 text-red-400 animate-pulse" />
-                                                    <span>🚨 Escalate Urgent Emergency</span>
-                                                </button>
-                                            )}
+                                            {/* Footer Row: Action Buttons */}
+                                            <div className="pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => speakText(readAloudText, request._id)}
+                                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition font-semibold"
+                                                    >
+                                                        <Volume2 className={`w-3.5 h-3.5 ${speakingId === request._id ? "text-emerald-400 animate-pulse" : "text-slate-400"}`} />
+                                                        <span>{speakingId === request._id ? "Speaking..." : "🔊 Read Aloud"}</span>
+                                                    </button>
+
+                                                    <DeleteButton
+                                                        onClick={() => handleDeleteRequest(request._id)}
+                                                        disabled={loading}
+                                                        title="Delete Request"
+                                                    />
+                                                </div>
+
+                                                {request.status !== "COMPLETED" && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleEmergency(request._id)}
+                                                        disabled={loading}
+                                                        className="flex items-center justify-center gap-1.5 border border-red-500/40 bg-red-500/15 hover:bg-red-500/25 text-red-300 font-bold rounded-xl px-3 py-1.5 text-xs transition disabled:opacity-50"
+                                                    >
+                                                        <Siren className="w-3.5 h-3.5 text-red-400 animate-pulse" />
+                                                        <span>🚨 Escalate SOS</span>
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     );
                                 })}
                             </div>
                         )}
                     </section>
+                    )}
                 </div>
             </div>
+            <ToastContainer theme="dark" position="top-right" autoClose={3000} />
         </main>
     );
 }

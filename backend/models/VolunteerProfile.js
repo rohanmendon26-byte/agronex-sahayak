@@ -37,6 +37,11 @@ const volunteerProfileSchema = new mongoose.Schema(
             default: null
         },
 
+        location: {
+            type: Object,
+            default: { locality: "Shirva", city: "Udupi", state: "Karnataka", lat: 13.2250, lng: 74.8030 }
+        },
+
         createdAt: {
             type: Date,
             default: Date.now

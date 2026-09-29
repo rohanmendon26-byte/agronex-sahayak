@@ -1,5 +1,6 @@
 const User = require("../models/User");
 const VolunteerProfile = require("../models/VolunteerProfile");
+const AssistanceRequest = require("../models/AssistanceRequest");
 const { createAuditLog } = require("../services/auditService");
 
 const getVolunteerProfile = async (req, res) => {
@@ -77,6 +78,7 @@ const getVolunteers = async (req, res) => {
                 organisationId: profile?.organisationId || null,
                 verificationNotes:
                     profile?.verificationNotes || null,
+                location: profile?.location || { locality: "Shirva", city: "Udupi", state: "Karnataka", lat: 13.2250, lng: 74.8030 },
                 createdAt: volunteer.createdAt
             };
         });
@@ -322,10 +324,112 @@ const updateAvailability = async (req, res) => {
     }
 };
 
+const deleteVolunteer = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const volunteer = await User.findOne({ _id: id, role: "VOLUNTEER" });
+        if (!volunteer) {
+            return res.status(404).json({
+                success: false,
+                error: {
+                    code: "NOT_FOUND",
+                    message: "Volunteer not found"
+                }
+            });
+        }
+
+        await VolunteerProfile.deleteOne({ userId: id });
+        await User.deleteOne({ _id: id });
+
+        await AssistanceRequest.updateMany(
+            { volunteerId: id },
+            { volunteerId: null, status: "PENDING" }
+        );
+
+        await createAuditLog({
+            userId: req.user.userId,
+            action: "VOLUNTEER_DELETED",
+            details: { volunteerId: id, name: volunteer.name }
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Volunteer account deleted successfully"
+        });
+
+    } catch (error) {
+        console.error("Delete volunteer error:", error);
+
+        return res.status(500).json({
+            success: false,
+            error: {
+                code: "SERVER_ERROR",
+                message: "Internal server error"
+            }
+        });
+    }
+};
+
+const updateLocation = async (req, res) => {
+    try {
+        const { location } = req.body;
+
+        if (!location) {
+            return res.status(400).json({
+                success: false,
+                error: {
+                    code: "VALIDATION_ERROR",
+                    message: "location is required"
+                }
+            });
+        }
+
+        const profile = await VolunteerProfile.findOne({
+            userId: req.user.userId
+        });
+
+        if (!profile) {
+            return res.status(404).json({
+                success: false,
+                error: {
+                    code: "PROFILE_NOT_FOUND",
+                    message: "Volunteer profile not found"
+                }
+            });
+        }
+
+        profile.location = location;
+        await profile.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Volunteer location updated successfully",
+            data: {
+                volunteerId: req.user.userId,
+                location: profile.location
+            }
+        });
+
+    } catch (error) {
+        console.error("Update location error:", error);
+
+        return res.status(500).json({
+            success: false,
+            error: {
+                code: "SERVER_ERROR",
+                message: "Internal server error"
+            }
+        });
+    }
+};
+
 module.exports = {
     getVolunteerProfile,
     getVolunteers,
     verifyVolunteer,
     activateVolunteer,
-    updateAvailability
+    updateAvailability,
+    updateLocation,
+    deleteVolunteer
 };

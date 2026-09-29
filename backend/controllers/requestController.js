@@ -381,9 +381,77 @@ const updateRequestStatus = async (req, res) => {
     }
 };
 
+const deleteRequest = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({
+                success: false,
+                error: {
+                    code: "INVALID_ID",
+                    message: "Invalid request ID"
+                }
+            });
+        }
+
+        const request = await AssistanceRequest.findById(id);
+
+        if (!request) {
+            return res.status(404).json({
+                success: false,
+                error: {
+                    code: "REQUEST_NOT_FOUND",
+                    message: "Assistance request not found"
+                }
+            });
+        }
+
+        // Authorization check: Senior can delete their own request, Police Admin can delete any request
+        if (req.user.role === "SENIOR" && request.seniorId.toString() !== req.user.userId.toString()) {
+            return res.status(403).json({
+                success: false,
+                error: {
+                    code: "FORBIDDEN",
+                    message: "You can only delete your own assistance requests"
+                }
+            });
+        }
+
+        // Delete associated emergency records if any
+        await EmergencyRecord.deleteMany({ requestId: id });
+
+        // Delete assistance request
+        await AssistanceRequest.findByIdAndDelete(id);
+
+        // Audit log
+        await createAuditLog({
+            userId: req.user.userId,
+            requestId: id,
+            action: "ASSISTANCE_REQUEST_DELETED"
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "Assistance request deleted successfully",
+            data: { id }
+        });
+    } catch (error) {
+        console.error("Delete request error:", error);
+        return res.status(500).json({
+            success: false,
+            error: {
+                code: "SERVER_ERROR",
+                message: "Internal server error deleting assistance request"
+            }
+        });
+    }
+};
+
 module.exports = {
     createRequest,
     getRequests,
     assignVolunteer,
-    updateRequestStatus
+    updateRequestStatus,
+    deleteRequest
 };
