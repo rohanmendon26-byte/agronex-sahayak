@@ -384,17 +384,20 @@ export default function SeniorDashboard() {
             }
 
             const parsed = data.data;
+            const currentAutoLoc = location || (gpsLocation.locality ? `${gpsLocation.locality} (${gpsLocation.lat.toFixed(4)}°N, ${gpsLocation.lng.toFixed(4)}°E)` : "Shirva, Udupi");
+            const parsedLoc = (parsed.location && parsed.location.toLowerCase() !== "shirva" && parsed.location.trim().length > 0) ? parsed.location : currentAutoLoc;
+
             setVoiceConfirmCard({
                 need: parsed.need,
-                location: parsed.location || "Shirva",
+                location: parsedLoc,
                 priority: parsed.priority || "ROUTINE"
             });
 
             // Read back confirmation aloud in natural language
             const isKannada = selectedLang === "kn-IN";
             const readBackMsg = isKannada
-                ? `ಸರಿ. ${parsed.need} ವಿನಂತಿ, ಸ್ಥಳ ${parsed.location || "ಶಿರ್ವ"}, ಆಧ್ಯತೆ ${parsed.priority}. ದಯವಿಟ್ಟು ಖಚಿತಪಡಿಸಿ.`
-                : `Understood. Assistance request for ${parsed.need} near ${parsed.location || "Shirva"}, marked priority as ${parsed.priority}. Please confirm to submit.`;
+                ? `ಸರಿ. ${parsed.need} ವಿನಂತಿ, ಸ್ಥಳ ${parsedLoc}, ಆಧ್ಯತೆ ${parsed.priority}. ದಯವಿಟ್ಟು ಖಚಿತಪಡಿಸಿ.`
+                : `Understood. Assistance request for ${parsed.need} near ${parsedLoc}, marked priority as ${parsed.priority}. Please confirm to submit.`;
 
             speakText(readBackMsg, "confirm-card");
         } catch (err) {
@@ -780,29 +783,40 @@ export default function SeniorDashboard() {
                         {activeTab === "VOICE" ? (
                             <div className="space-y-5">
                                 <div className="text-center py-3">
-                                    <div className="flex items-center justify-center gap-1.5 p-1 bg-slate-900 border border-slate-800 rounded-2xl w-fit mx-auto mb-4">
-                                        <Globe className="w-3.5 h-3.5 text-slate-400 ml-1.5" />
+                                    <div className="flex flex-wrap items-center justify-center gap-2 mb-4">
+                                        <div className="flex items-center justify-center gap-1.5 p-1 bg-slate-900 border border-slate-800 rounded-2xl">
+                                            <Globe className="w-3.5 h-3.5 text-slate-400 ml-1.5" />
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedLang("en-IN")}
+                                                className={`py-1.5 px-2 rounded-xl text-xs font-semibold transition-all ${
+                                                    selectedLang === "en-IN"
+                                                        ? "bg-slate-800 text-white font-bold"
+                                                        : "text-slate-400 hover:text-slate-200"
+                                                }`}
+                                            >
+                                                EN
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedLang("kn-IN")}
+                                                className={`py-1.5 px-2 rounded-xl text-xs font-semibold transition-all ${
+                                                    selectedLang === "kn-IN"
+                                                        ? "bg-slate-800 text-emerald-400 font-bold"
+                                                        : "text-slate-400 hover:text-slate-200"
+                                                }`}
+                                            >
+                                                ಕನ್ನಡ
+                                            </button>
+                                        </div>
+
                                         <button
                                             type="button"
-                                            onClick={() => setSelectedLang("en-IN")}
-                                            className={`py-1.5 px-2 rounded-xl text-xs font-semibold transition-all ${
-                                                selectedLang === "en-IN"
-                                                    ? "bg-slate-800 text-white font-bold"
-                                                    : "text-slate-400 hover:text-slate-200"
-                                            }`}
+                                            onClick={fetchGpsLocation}
+                                            className="flex items-center gap-1.5 py-1.5 px-3 rounded-2xl bg-slate-900 border border-slate-800 text-xs font-bold text-emerald-400 hover:text-emerald-300 transition shadow-sm"
                                         >
-                                            EN
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setSelectedLang("kn-IN")}
-                                            className={`py-1.5 px-2 rounded-xl text-xs font-semibold transition-all ${
-                                                selectedLang === "kn-IN"
-                                                    ? "bg-slate-800 text-emerald-400 font-bold"
-                                                    : "text-slate-400 hover:text-slate-200"
-                                            }`}
-                                        >
-                                            ಕನ್ನಡ
+                                            <Navigation className="w-3.5 h-3.5 text-emerald-400" />
+                                            <span>📍 {gpsLocation.locality || "Autofill GPS"}</span>
                                         </button>
                                     </div>
                                     <p className="text-xs text-slate-400 mb-5">
@@ -914,29 +928,66 @@ export default function SeniorDashboard() {
                                                 />
                                             </div>
 
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div>
-                                                    <label className="block text-[11px] font-semibold text-slate-400 uppercase">Location</label>
+                                            <div>
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <label className="block text-[11px] font-semibold text-slate-400 uppercase">Location / Address</label>
+                                                    <button
+                                                        type="button"
+                                                        onClick={async () => {
+                                                            toast.info("📍 Fetching live GPS pin...");
+                                                            if (navigator.geolocation) {
+                                                                navigator.geolocation.getCurrentPosition(
+                                                                    async (pos) => {
+                                                                        const lat = pos.coords.latitude;
+                                                                        const lng = pos.coords.longitude;
+                                                                        let locName = `Location (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`;
+                                                                        try {
+                                                                            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+                                                                            const data = await res.json();
+                                                                            if (data && data.address) {
+                                                                                locName = data.address.suburb || data.address.village || data.address.town || data.address.city || locName;
+                                                                            }
+                                                                        } catch (e) {}
+                                                                        const fullLoc = `${locName} (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`;
+                                                                        setVoiceConfirmCard((prev) => ({ ...prev, location: fullLoc }));
+                                                                        toast.success(`📍 Live GPS Autofilled: ${locName}`);
+                                                                    },
+                                                                    () => {
+                                                                        setVoiceConfirmCard((prev) => ({ ...prev, location: location || "Live GPS Location" }));
+                                                                    }
+                                                                );
+                                                            }
+                                                        }}
+                                                        className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition"
+                                                    >
+                                                        <Navigation className="w-3 h-3 text-emerald-400" />
+                                                        <span>📍 Autofill Live GPS Pin</span>
+                                                    </button>
+                                                </div>
+                                                <div className="relative">
+                                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                                        <MapPin className="w-3.5 h-3.5" />
+                                                    </div>
                                                     <input
                                                         type="text"
                                                         value={voiceConfirmCard.location}
                                                         onChange={(e) => setVoiceConfirmCard({ ...voiceConfirmCard, location: e.target.value })}
-                                                        className="w-full mt-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white"
                                                     />
                                                 </div>
+                                            </div>
 
-                                                <div>
-                                                    <label className="block text-[11px] font-semibold text-slate-400 uppercase">Priority</label>
-                                                    <select
-                                                        value={voiceConfirmCard.priority}
-                                                        onChange={(e) => setVoiceConfirmCard({ ...voiceConfirmCard, priority: e.target.value })}
-                                                        className="w-full mt-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
-                                                    >
-                                                        <option value="ROUTINE">Routine</option>
-                                                        <option value="URGENT">Urgent</option>
-                                                        <option value="EMERGENCY">Emergency</option>
-                                                    </select>
-                                                </div>
+                                            <div>
+                                                <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Priority Level</label>
+                                                <select
+                                                    value={voiceConfirmCard.priority}
+                                                    onChange={(e) => setVoiceConfirmCard({ ...voiceConfirmCard, priority: e.target.value })}
+                                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                                                >
+                                                    <option value="ROUTINE">Routine</option>
+                                                    <option value="URGENT">Urgent</option>
+                                                    <option value="EMERGENCY">Emergency</option>
+                                                </select>
                                             </div>
                                         </div>
 
