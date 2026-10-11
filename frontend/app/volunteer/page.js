@@ -16,6 +16,7 @@ import {
   Navigation
 } from "lucide-react";
 import { calculateDistance } from "@/utils/distance";
+import { getUserLocation } from "@/utils/geolocation";
 import DeleteButton from "@/components/DeleteButton";
 import Loader from "@/components/Loader";
 
@@ -60,6 +61,12 @@ export default function VolunteerDashboard() {
     const [available, setAvailable] = useState(true);
     const [loading, setLoading] = useState(true);
     const [updating, setUpdating] = useState("");
+    const [gpsLocation, setGpsLocation] = useState({
+        lat: 13.2250,
+        lng: 74.8030,
+        locality: "Shirva, Udupi",
+        loading: false
+    });
 
     const token =
         typeof window !== "undefined"
@@ -92,7 +99,7 @@ export default function VolunteerDashboard() {
 
         fetchVolunteerProfile();
         fetchRequests();
-        syncGpsLocation();
+        syncGpsLocation(false);
 
         const intervalId = setInterval(() => {
             fetchRequests(true);
@@ -109,29 +116,55 @@ export default function VolunteerDashboard() {
         };
     }, []);
 
-    const syncGpsLocation = async () => {
-        if (typeof window === "undefined" || !navigator.geolocation || !token) return;
-        navigator.geolocation.getCurrentPosition(
-            async (position) => {
-                const { latitude, longitude } = position.coords;
-                try {
-                    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/volunteers/location`, {
-                        method: "PATCH",
-                        headers: {
-                            "Content-Type": "application/json",
-                            Authorization: `Bearer ${token}`
-                        },
-                        body: JSON.stringify({
-                            location: { locality: "Shirva, Udupi", lat: latitude, lng: longitude }
-                        })
-                    });
-                } catch (e) {
-                    console.warn(e);
+    const syncGpsLocation = async (isManualClick = false) => {
+        if (typeof window === "undefined" || !token) return;
+        if (!navigator.geolocation) {
+            if (isManualClick) toast.warn("Geolocation is not supported by your browser");
+            return;
+        }
+
+        setGpsLocation((prev) => ({ ...prev, loading: true }));
+        try {
+            const geo = await getUserLocation();
+            const resolvedLocality = geo.displayName || geo.locality;
+            setGpsLocation({
+                lat: geo.lat,
+                lng: geo.lng,
+                locality: resolvedLocality,
+                city: geo.city,
+                state: geo.state,
+                loading: false
+            });
+
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/volunteers/location`, {
+                method: "PATCH",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    location: {
+                        locality: geo.locality || resolvedLocality,
+                        city: geo.city || "Udupi",
+                        state: geo.state || "Karnataka",
+                        lat: geo.lat,
+                        lng: geo.lng
+                    }
+                })
+            });
+
+            if (res.ok) {
+                notifySync();
+                if (isManualClick) {
+                    toast.success(`📍 Volunteer patrol location updated: ${geo.locality}`);
                 }
-            },
-            () => {},
-            { timeout: 8000 }
-        );
+            }
+        } catch (err) {
+            setGpsLocation((prev) => ({ ...prev, loading: false }));
+            if (isManualClick) {
+                toast.warn(err.message || "Could not read GPS location");
+            }
+        }
     };
 
     const notifySync = () => {
@@ -148,6 +181,16 @@ export default function VolunteerDashboard() {
             const data = await response.json();
             if (response.ok) {
                 setAvailable(data?.data?.availability ?? true);
+                if (data?.data?.location) {
+                    const loc = data.data.location;
+                    const localityStr = loc.locality ? `${loc.locality}${loc.city && loc.city !== loc.locality ? `, ${loc.city}` : ""}` : "Shirva, Udupi";
+                    setGpsLocation(prev => ({
+                        ...prev,
+                        lat: loc.lat || prev.lat,
+                        lng: loc.lng || prev.lng,
+                        locality: localityStr
+                    }));
+                }
             }
         } catch (e) {
             console.warn(e);
@@ -256,7 +299,16 @@ export default function VolunteerDashboard() {
                         <h2 className="text-base sm:text-lg font-bold text-white">
                             Volunteer: {user.name || "Volunteer"}
                         </h2>
-                        <span className="text-[11px] text-slate-400">Shirva Coverage</span>
+                        <button
+                            type="button"
+                            onClick={() => syncGpsLocation(true)}
+                            disabled={gpsLocation.loading}
+                            className="text-[11px] text-violet-300 hover:text-white font-medium flex items-center gap-1 transition"
+                            title="Click to refresh your volunteer patrol GPS location"
+                        >
+                            <Navigation className={`w-3 h-3 ${gpsLocation.loading ? "animate-spin text-amber-400" : "text-violet-400"}`} />
+                            <span>{gpsLocation.loading ? "Updating GPS..." : gpsLocation.locality}</span>
+                        </button>
                     </div>
                 </div>
 

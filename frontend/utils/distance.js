@@ -9,6 +9,17 @@ export function getCoordinates(loc) {
         }
     }
 
+    if (typeof loc === "string") {
+        const coordMatch = loc.match(/(-?\d+\.\d+)[\s°NS,]+(-?\d+\.\d+)/i);
+        if (coordMatch) {
+            const parsedLat = parseFloat(coordMatch[1]);
+            const parsedLng = parseFloat(coordMatch[2]);
+            if (!isNaN(parsedLat) && !isNaN(parsedLng)) {
+                return { lat: parsedLat, lng: parsedLng };
+            }
+        }
+    }
+
     const text = (typeof loc === "string" ? loc : JSON.stringify(loc)).toLowerCase();
 
     if (text.includes("shirva main") || text.includes("market")) return { lat: 13.2230, lng: 74.8040 };

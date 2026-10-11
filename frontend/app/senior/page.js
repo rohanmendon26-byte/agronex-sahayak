@@ -21,6 +21,7 @@ import {
   Navigation
 } from "lucide-react";
 import { calculateDistance } from "@/utils/distance";
+import { getUserLocation } from "@/utils/geolocation";
 import DeleteButton from "@/components/DeleteButton";
 import Loader from "@/components/Loader";
 
@@ -109,7 +110,7 @@ export default function SeniorDashboard() {
         }
 
         fetchRequests();
-        fetchGpsLocation();
+        fetchGpsLocation(false);
 
         const intervalId = setInterval(() => {
             fetchRequests(true);
@@ -126,23 +127,35 @@ export default function SeniorDashboard() {
         };
     }, []);
 
-    const fetchGpsLocation = () => {
-        if (typeof window === "undefined" || !navigator.geolocation) return;
+    const fetchGpsLocation = async (isManualClick = false) => {
+        if (typeof window === "undefined" || !navigator.geolocation) {
+            if (isManualClick) toast.warn("Geolocation is not supported by your browser");
+            return;
+        }
 
         setGpsLocation((prev) => ({ ...prev, loading: true }));
-        navigator.geolocation.getCurrentPosition(
-            async (pos) => {
-                const { latitude, longitude } = pos.coords;
-                let loc = `Shirva (${latitude.toFixed(3)}°N, ${longitude.toFixed(3)}°E)`;
-                setGpsLocation({ lat: latitude, lng: longitude, locality: loc, loading: false });
-                setLocation(loc);
-                toast.success("GPS updated");
-            },
-            () => {
-                setGpsLocation((prev) => ({ ...prev, loading: false }));
-            },
-            { timeout: 7000 }
-        );
+        try {
+            const geo = await getUserLocation();
+            const resolvedLocality = geo.displayName || geo.locality;
+            setGpsLocation({
+                lat: geo.lat,
+                lng: geo.lng,
+                locality: resolvedLocality,
+                city: geo.city,
+                state: geo.state,
+                loading: false
+            });
+            setLocation(resolvedLocality);
+            setVoiceConfirmCard((prev) => (prev ? { ...prev, location: resolvedLocality } : prev));
+            if (isManualClick) {
+                toast.success(`📍 GPS detected: ${geo.locality}`);
+            }
+        } catch (err) {
+            setGpsLocation((prev) => ({ ...prev, loading: false }));
+            if (isManualClick) {
+                toast.warn(err.message || "Could not read GPS location");
+            }
+        }
     };
 
     const notifySync = () => {
@@ -239,7 +252,7 @@ export default function SeniorDashboard() {
             if (!response.ok) throw new Error(data?.error?.message || "Parse failed");
 
             const parsed = data.data;
-            const parsedLoc = parsed.location || location || "Shirva, Udupi";
+            const parsedLoc = parsed.location || location || gpsLocation.locality || "Shirva, Udupi";
 
             setVoiceConfirmCard({
                 need: parsed.need,
@@ -281,8 +294,14 @@ export default function SeniorDashboard() {
         const reqPriority = customData ? customData.priority : priority;
         const reqChannel = customData ? customData.channel : channel;
 
+        const resolvedText = typeof reqLocation === "string" && reqLocation.trim()
+            ? reqLocation.trim()
+            : (gpsLocation.locality || "Shirva, Udupi");
+
         const locationPayload = {
-            locality: typeof reqLocation === "string" ? reqLocation.split("(")[0].trim() || "Shirva" : "Shirva",
+            locality: resolvedText,
+            city: gpsLocation.city || "Udupi",
+            state: gpsLocation.state || "Karnataka",
             lat: gpsLocation.lat || 13.2210,
             lng: gpsLocation.lng || 74.8020
         };
@@ -381,11 +400,13 @@ export default function SeniorDashboard() {
                         </h2>
                         <button
                             type="button"
-                            onClick={fetchGpsLocation}
-                            className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium flex items-center gap-1"
+                            onClick={() => fetchGpsLocation(true)}
+                            disabled={gpsLocation.loading}
+                            className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium flex items-center gap-1 transition"
+                            title="Click to refresh current GPS location"
                         >
-                            <Navigation className="w-3 h-3" />
-                            <span>{gpsLocation.locality}</span>
+                            <Navigation className={`w-3 h-3 ${gpsLocation.loading ? "animate-spin text-amber-400" : ""}`} />
+                            <span>{gpsLocation.loading ? "Detecting GPS..." : gpsLocation.locality}</span>
                         </button>
                     </div>
                 </div>
@@ -619,10 +640,13 @@ export default function SeniorDashboard() {
                                         <label className="font-bold text-slate-400">Location</label>
                                         <button
                                             type="button"
-                                            onClick={fetchGpsLocation}
-                                            className="text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold"
+                                            onClick={() => fetchGpsLocation(true)}
+                                            disabled={gpsLocation.loading}
+                                            className="text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1 transition disabled:opacity-60"
+                                            title="Autofill current GPS location"
                                         >
-                                            Autofill GPS
+                                            <Navigation className={`w-3 h-3 ${gpsLocation.loading ? "animate-spin text-amber-400" : ""}`} />
+                                            <span>{gpsLocation.loading ? "Reading GPS..." : "Autofill GPS"}</span>
                                         </button>
                                     </div>
                                     <input

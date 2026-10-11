@@ -27,7 +27,8 @@ const getVolunteerProfile = async (req, res) => {
                 status: profile.status,
                 skills: profile.skills || [],
                 organisationId: profile.organisationId || null,
-                verificationNotes: profile.verificationNotes || null
+                verificationNotes: profile.verificationNotes || null,
+                location: profile.location || null
             }
         });
     } catch (error) {

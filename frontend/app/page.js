@@ -17,6 +17,7 @@ import {
   Zap
 } from "lucide-react";
 import Loader from "@/components/Loader";
+import { getUserLocation } from "@/utils/geolocation";
 
 export default function Home() {
   const router = useRouter();
@@ -83,6 +84,35 @@ export default function Home() {
       if (loggedInRole === "SENIOR") {
         router.push("/senior");
       } else if (loggedInRole === "VOLUNTEER") {
+        // Update volunteer GPS location immediately upon login
+        getUserLocation()
+          .then(async (loc) => {
+            try {
+              await fetch(`${process.env.NEXT_PUBLIC_API_URL}/volunteers/location`, {
+                method: "PATCH",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${data.data.token}`
+                },
+                body: JSON.stringify({
+                  location: {
+                    locality: loc.locality || loc.displayName,
+                    city: loc.city || "Udupi",
+                    state: loc.state || "Karnataka",
+                    lat: loc.lat,
+                    lng: loc.lng
+                  }
+                })
+              });
+              if (typeof window !== "undefined") {
+                localStorage.setItem("agronex_sync", String(Date.now()));
+              }
+            } catch (e) {
+              console.warn("Location sync failed on login", e);
+            }
+          })
+          .catch((e) => console.warn("GPS lookup on login skipped", e));
+
         router.push("/volunteer");
       } else {
         router.push("/admin");
