@@ -2,19 +2,12 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { ToastContainer, toast } from "react-toastify";
+import { toast } from "react-toastify";
 import {
-  HeartHandshake,
-  LogOut,
-  User,
   MapPin,
   Clock,
-  AlertTriangle,
-  PlusCircle,
   Siren,
-  CheckCircle2,
   RefreshCw,
-  ShieldAlert,
   Loader2,
   Sparkles,
   Heart,
@@ -22,87 +15,37 @@ import {
   MicOff,
   Volume2,
   FileText,
-  Radio,
-  Edit3,
   RotateCcw,
   Send,
-  Globe,
-  Trash2,
   Zap,
   Navigation
 } from "lucide-react";
 import { calculateDistance } from "@/utils/distance";
 import DeleteButton from "@/components/DeleteButton";
+import Loader from "@/components/Loader";
 
 const formatLocation = (loc) => {
     if (!loc) return "Shirva, Udupi";
     if (typeof loc === "string") return loc;
     if (typeof loc === "object") {
-        const parts = [loc.locality, loc.city, loc.state, loc.addressLine].filter(Boolean);
+        const parts = [loc.locality, loc.city, loc.state].filter(Boolean);
         if (parts.length > 0) return parts.join(", ");
-        return Object.values(loc).filter(v => typeof v === "string").join(", ") || "Shirva, Udupi";
+        return "Shirva, Udupi";
     }
     return String(loc);
 };
 
 const getStatusStyle = (status) => {
     const normalized = String(status || "").toUpperCase();
-
     const styles = {
-        PENDING: "bg-amber-500/15 text-amber-300 border border-amber-500/30",
-        ASSIGNED: "bg-violet-500/15 text-violet-300 border border-violet-500/30",
-        IN_PROGRESS: "bg-sky-500/15 text-sky-300 border border-sky-500/30",
-        COMPLETED: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30",
-        ACTIVE: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30",
-        VERIFIED: "bg-sky-500/15 text-sky-300 border border-sky-500/30",
-        EMERGENCY: "bg-red-500/20 text-red-300 border border-red-500/40 font-bold animate-pulse",
-        URGENT: "bg-rose-500/15 text-rose-300 border border-rose-500/30"
+        PENDING: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+        ASSIGNED: "bg-violet-500/15 text-violet-300 border-violet-500/30",
+        IN_PROGRESS: "bg-sky-500/15 text-sky-300 border-sky-500/30",
+        COMPLETED: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+        EMERGENCY: "bg-red-500/20 text-red-300 border-red-500/40 animate-pulse font-bold",
+        URGENT: "bg-rose-500/15 text-rose-300 border-rose-500/30 font-semibold"
     };
-
-    return styles[normalized] || "bg-slate-800 text-slate-300 border border-slate-700";
-};
-
-const reverseGeocode = async (lat, lng) => {
-    try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`, {
-            headers: { 'Accept-Language': 'en' }
-        });
-        if (res.ok) {
-            const data = await res.json();
-            const addr = data.address || {};
-            const area = addr.suburb || addr.neighbourhood || addr.village || addr.town || addr.city_district || addr.city || addr.county || "";
-            const cityOrState = addr.city || addr.state_district || addr.state || "";
-            const parts = [area, cityOrState].filter(Boolean);
-            if (parts.length > 0) {
-                return parts.join(", ");
-            }
-            if (data.display_name) {
-                return data.display_name.split(",").slice(0, 2).join(", ").trim();
-            }
-        }
-    } catch (e) {
-        console.warn("Reverse geocode notice:", e);
-    }
-    return null;
-};
-
-const fetchIpLocation = async () => {
-    try {
-        const res = await fetch("https://ipapi.co/json/");
-        if (res.ok) {
-            const data = await res.json();
-            if (data.city && data.latitude && data.longitude) {
-                return {
-                    lat: data.latitude,
-                    lng: data.longitude,
-                    locality: `${data.city}, ${data.region_code || data.region || ""}`.trim()
-                };
-            }
-        }
-    } catch (e) {
-        console.warn("IP location fallback notice:", e);
-    }
-    return null;
+    return styles[normalized] || "bg-slate-800 text-slate-300 border-slate-700";
 };
 
 export default function SeniorDashboard() {
@@ -110,89 +53,29 @@ export default function SeniorDashboard() {
 
     const [user, setUser] = useState({ name: "Senior" });
     const [need, setNeed] = useState("Medicine pickup");
-    const [location, setLocation] = useState("Detecting location...");
+    const [location, setLocation] = useState("Shirva, Udupi");
     const [priority, setPriority] = useState("URGENT");
     const [channel, setChannel] = useState("TEXT");
 
-    // Voice & Language Flow States
-    const [activeNavSection, setActiveNavSection] = useState("ALL"); // "ALL" | "INPUT" | "HISTORY"
-    const [activeTab, setActiveTab] = useState("VOICE"); // "VOICE" | "TEXT"
-    const [selectedLang, setSelectedLang] = useState("en-IN"); // "en-IN" | "kn-IN"
+    const [activeNavSection, setActiveNavSection] = useState("ALL");
+    const [activeTab, setActiveTab] = useState("VOICE");
+    const [selectedLang, setSelectedLang] = useState("en-IN");
     const [isListening, setIsListening] = useState(false);
     const [transcript, setTranscript] = useState("");
     const [parsingVoice, setParsingVoice] = useState(false);
-    const [voiceConfirmCard, setVoiceConfirmCard] = useState(null); // { need, location, priority }
+    const [voiceConfirmCard, setVoiceConfirmCard] = useState(null);
     const [speakingId, setSpeakingId] = useState(null);
 
     const [requests, setRequests] = useState([]);
     const [loading, setLoading] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
-    const [message, setMessage] = useState("");
-    const [error, setError] = useState("");
 
     const [gpsLocation, setGpsLocation] = useState({
         lat: 13.2210,
         lng: 74.8020,
-        locality: "Detecting live location...",
-        isLive: true,
+        locality: "Shirva, Udupi",
         loading: false
     });
-
-    const fetchGpsLocation = () => {
-        if (typeof window === "undefined") return;
-
-        setGpsLocation((prev) => ({ ...prev, loading: true }));
-
-        if ("geolocation" in navigator) {
-            navigator.geolocation.getCurrentPosition(
-                async (position) => {
-                    const { latitude, longitude } = position.coords;
-                    let detectedLocality = await reverseGeocode(latitude, longitude);
-                    if (!detectedLocality) {
-                        detectedLocality = `Location (${latitude.toFixed(4)}°N, ${longitude.toFixed(4)}°E)`;
-                    }
-                    setGpsLocation({
-                        lat: latitude,
-                        lng: longitude,
-                        locality: detectedLocality,
-                        isLive: true,
-                        loading: false
-                    });
-                    setLocation(`${detectedLocality} (${latitude.toFixed(4)}°N, ${longitude.toFixed(4)}°E)`);
-                    toast.success(`📍 Live GPS Captured: ${detectedLocality}!`, { icon: "🛰️" });
-                },
-                async (err) => {
-                    console.warn("Geolocation API notice:", err.message);
-                    const ipLoc = await fetchIpLocation();
-                    if (ipLoc) {
-                        setGpsLocation({
-                            lat: ipLoc.lat,
-                            lng: ipLoc.lng,
-                            locality: ipLoc.locality,
-                            isLive: true,
-                            loading: false
-                        });
-                        setLocation(`${ipLoc.locality} (${ipLoc.lat.toFixed(4)}°N, ${ipLoc.lng.toFixed(4)}°E)`);
-                        toast.info(`📍 Location detected via IP: ${ipLoc.locality}`);
-                    } else {
-                        setGpsLocation({
-                            lat: 13.2210,
-                            lng: 74.8020,
-                            locality: "Current Location",
-                            isLive: true,
-                            loading: false
-                        });
-                        setLocation("Current Location (13.2210°N, 74.8020°E)");
-                        toast.info("📍 Live GPS set to Current Location");
-                    }
-                },
-                { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
-            );
-        } else {
-            setGpsLocation((prev) => ({ ...prev, loading: false }));
-            toast.error("Geolocation is not supported in this browser.");
-        }
-    };
 
     const recognitionRef = useRef(null);
 
@@ -219,27 +102,21 @@ export default function SeniorDashboard() {
             const savedUser = localStorage.getItem("agronex_user");
             if (savedUser) {
                 const parsedUser = JSON.parse(savedUser);
-                if (parsedUser?.name) {
-                    setUser(parsedUser);
-                    toast.info(`Welcome ${parsedUser.name}! Active as Senior Citizen.`, { icon: "👴" });
-                }
+                if (parsedUser?.name) setUser(parsedUser);
             }
         } catch (error) {
-            console.error("Failed to parse saved user:", error);
+            console.error(error);
         }
 
         fetchRequests();
         fetchGpsLocation();
 
-        // Real-time 3-second auto-sync interval across all devices/windows
         const intervalId = setInterval(() => {
             fetchRequests(true);
         }, 3000);
 
         const handleStorageChange = (e) => {
-            if (e.key === "agronex_sync") {
-                fetchRequests(true);
-            }
+            if (e.key === "agronex_sync") fetchRequests(true);
         };
         window.addEventListener("storage", handleStorageChange);
 
@@ -249,16 +126,34 @@ export default function SeniorDashboard() {
         };
     }, []);
 
+    const fetchGpsLocation = () => {
+        if (typeof window === "undefined" || !navigator.geolocation) return;
+
+        setGpsLocation((prev) => ({ ...prev, loading: true }));
+        navigator.geolocation.getCurrentPosition(
+            async (pos) => {
+                const { latitude, longitude } = pos.coords;
+                let loc = `Shirva (${latitude.toFixed(3)}°N, ${longitude.toFixed(3)}°E)`;
+                setGpsLocation({ lat: latitude, lng: longitude, locality: loc, loading: false });
+                setLocation(loc);
+                toast.success("GPS updated");
+            },
+            () => {
+                setGpsLocation((prev) => ({ ...prev, loading: false }));
+            },
+            { timeout: 7000 }
+        );
+    };
+
     const notifySync = () => {
         if (typeof window !== "undefined") {
             localStorage.setItem("agronex_sync", String(Date.now()));
         }
     };
 
-    // Text-to-speech helper
     const speakText = (text, id = null) => {
         if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-        window.speechSynthesis.cancel(); // Stop any active speech
+        window.speechSynthesis.cancel();
 
         if (id && speakingId === id) {
             setSpeakingId(null);
@@ -268,36 +163,23 @@ export default function SeniorDashboard() {
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = selectedLang;
         utterance.rate = 0.95;
-        utterance.pitch = 1.0;
 
         if (id) setSpeakingId(id);
-
-        utterance.onend = () => {
-            setSpeakingId(null);
-        };
-        utterance.onerror = () => {
-            setSpeakingId(null);
-        };
+        utterance.onend = () => setSpeakingId(null);
+        utterance.onerror = () => setSpeakingId(null);
 
         window.speechSynthesis.speak(utterance);
     };
 
-    // Voice recognition launcher
     const startListening = () => {
-        setError("");
-        setMessage("");
         setTranscript("");
         setVoiceConfirmCard(null);
 
         if (typeof window === "undefined") return;
-
-        const SpeechRecognition =
-            window.SpeechRecognition || window.webkitSpeechRecognition;
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
         if (!SpeechRecognition) {
-            const errMsg = "Voice recognition is not supported in this browser. Please use Chrome/Edge or fill out the text form.";
-            setError(errMsg);
-            toast.error(errMsg);
+            toast.error("Voice not supported on this browser");
             return;
         }
 
@@ -309,61 +191,37 @@ export default function SeniorDashboard() {
 
             recognition.onstart = () => {
                 setIsListening(true);
-                toast.info(selectedLang === "kn-IN" ? "🎙️ ಮೈಕ್ರೋಫೋನ್ ಸಕ್ರಿಯವಾಗಿದೆ... ಈಗ ಮಾತನಾಡಿ." : "🎙️ Listening... Speak your request naturally now.");
+                toast.info(selectedLang === "kn-IN" ? "ಮಾತನಾಡಿ..." : "Listening...");
             };
 
             recognition.onresult = (event) => {
-                let currentTranscript = "";
+                let text = "";
                 for (let i = event.resultIndex; i < event.results.length; i++) {
-                    currentTranscript += event.results[i][0].transcript;
+                    text += event.results[i][0].transcript;
                 }
-                setTranscript(currentTranscript);
+                setTranscript(text);
             };
 
-            recognition.onerror = (event) => {
-                console.error("Speech recognition error:", event.error);
-                setIsListening(false);
-                if (event.error !== "no-speech") {
-                    const captureError = `Voice capture error (${event.error}). Please try again.`;
-                    setError(captureError);
-                    toast.error(captureError);
-                }
-            };
-
-            recognition.onend = () => {
-                setIsListening(false);
-            };
+            recognition.onerror = () => setIsListening(false);
+            recognition.onend = () => setIsListening(false);
 
             recognitionRef.current = recognition;
             recognition.start();
         } catch (err) {
-            console.error("Failed to start speech recognition:", err);
             setIsListening(false);
-            setError("Failed to initialize voice recognition.");
-            toast.error("Failed to initialize voice recognition.");
+            toast.error("Microphone error");
         }
     };
 
     const stopListening = () => {
-        if (recognitionRef.current) {
-            recognitionRef.current.stop();
-        }
+        if (recognitionRef.current) recognitionRef.current.stop();
         setIsListening(false);
     };
 
-    // Process spoken transcript with backend voice parser
     const handleParseVoice = async () => {
-        if (!transcript.trim()) {
-            const emptyMsg = "Please speak your request before parsing.";
-            setError(emptyMsg);
-            toast.warn(emptyMsg);
-            return;
-        }
+        if (!transcript.trim()) return;
 
         setParsingVoice(true);
-        setError("");
-        toast.info("⚡ Processing voice request into structured card...");
-
         try {
             const response = await fetch(
                 `${process.env.NEXT_PUBLIC_API_URL}/voice/parse-request`,
@@ -378,14 +236,10 @@ export default function SeniorDashboard() {
             );
 
             const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data?.error?.message || "Failed to parse voice request");
-            }
+            if (!response.ok) throw new Error(data?.error?.message || "Parse failed");
 
             const parsed = data.data;
-            const currentAutoLoc = location || (gpsLocation.locality ? `${gpsLocation.locality} (${gpsLocation.lat.toFixed(4)}°N, ${gpsLocation.lng.toFixed(4)}°E)` : "Shirva, Udupi");
-            const parsedLoc = (parsed.location && parsed.location.toLowerCase() !== "shirva" && parsed.location.trim().length > 0) ? parsed.location : currentAutoLoc;
+            const parsedLoc = parsed.location || location || "Shirva, Udupi";
 
             setVoiceConfirmCard({
                 need: parsed.need,
@@ -393,15 +247,9 @@ export default function SeniorDashboard() {
                 priority: parsed.priority || "ROUTINE"
             });
 
-            // Read back confirmation aloud in natural language
-            const isKannada = selectedLang === "kn-IN";
-            const readBackMsg = isKannada
-                ? `ಸರಿ. ${parsed.need} ವಿನಂತಿ, ಸ್ಥಳ ${parsedLoc}, ಆಧ್ಯತೆ ${parsed.priority}. ದಯವಿಟ್ಟು ಖಚಿತಪಡಿಸಿ.`
-                : `Understood. Assistance request for ${parsed.need} near ${parsedLoc}, marked priority as ${parsed.priority}. Please confirm to submit.`;
-
-            speakText(readBackMsg, "confirm-card");
+            toast.success("Processed! Confirm below.");
         } catch (err) {
-            setError(err.message);
+            toast.error(err.message || "Parse failed");
         } finally {
             setParsingVoice(false);
         }
@@ -412,24 +260,13 @@ export default function SeniorDashboard() {
         try {
             const response = await fetch(
                 `${process.env.NEXT_PUBLIC_API_URL}/requests`,
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`
-                    }
-                }
+                { headers: { Authorization: `Bearer ${token}` } }
             );
 
             const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(
-                    data?.error?.message || "Failed to load requests"
-                );
-            }
-
-            setRequests(data.data || []);
+            if (response.ok) setRequests(data.data || []);
         } catch (err) {
-            if (!isSilent) setError(err.message);
+            console.error(err);
         } finally {
             if (!isSilent) setRefreshing(false);
         }
@@ -439,25 +276,16 @@ export default function SeniorDashboard() {
         if (e) e.preventDefault();
 
         setLoading(true);
-        setMessage("");
-        setError("");
-
         const reqNeed = customData ? customData.need : need;
         const reqLocation = customData ? customData.location : location;
         const reqPriority = customData ? customData.priority : priority;
         const reqChannel = customData ? customData.channel : channel;
 
-        let locationPayload = reqLocation;
-        if (typeof reqLocation === "string") {
-            locationPayload = {
-                locality: reqLocation.split("(")[0].trim() || gpsLocation.locality || "Shirva",
-                city: "Udupi",
-                state: "Karnataka",
-                lat: gpsLocation.lat || 13.2210,
-                lng: gpsLocation.lng || 74.8020,
-                isLiveGPS: true
-            };
-        }
+        const locationPayload = {
+            locality: typeof reqLocation === "string" ? reqLocation.split("(")[0].trim() || "Shirva" : "Shirva",
+            lat: gpsLocation.lat || 13.2210,
+            lng: gpsLocation.lng || 74.8020
+        };
 
         try {
             const response = await fetch(
@@ -478,29 +306,17 @@ export default function SeniorDashboard() {
             );
 
             const data = await response.json();
+            if (!response.ok) throw new Error(data?.error?.message || "Failed");
 
-            if (!response.ok) {
-                throw new Error(
-                    data?.error?.message || "Failed to create request"
-                );
-            }
-
-            const isVoice = reqChannel === "VOICE";
-            const successMsg = `Assistance request submitted via ${isVoice ? "🎙️ Voice" : "📝 Text"} successfully!`;
-            setMessage(successMsg);
-            toast.success(successMsg);
-
+            toast.success("Request sent!");
             setNeed("");
-            setLocation("");
-            setPriority("ROUTINE");
             setTranscript("");
             setVoiceConfirmCard(null);
 
             notifySync();
             fetchRequests();
         } catch (err) {
-            setError(err.message);
-            toast.error(err.message || "Failed to create request");
+            toast.error(err.message || "Error creating request");
         } finally {
             setLoading(false);
         }
@@ -508,9 +324,6 @@ export default function SeniorDashboard() {
 
     const handleEmergency = async (requestId) => {
         setLoading(true);
-        setMessage("");
-        setError("");
-
         try {
             const response = await fetch(
                 `${process.env.NEXT_PUBLIC_API_URL}/emergencies`,
@@ -520,708 +333,413 @@ export default function SeniorDashboard() {
                         "Content-Type": "application/json",
                         Authorization: `Bearer ${token}`
                     },
-                    body: JSON.stringify({
-                        requestId,
-                        details: "Emergency assistance required"
-                    })
+                    body: JSON.stringify({ requestId, details: "SOS Emergency" })
                 }
             );
 
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(
-                    data?.error?.message || "Failed to escalate emergency"
-                );
-            }
-
-            const alertMsg = "🚨 Emergency SOS alert dispatched to Police & Volunteers!";
-            setMessage(alertMsg);
-            toast.error(alertMsg, { icon: "🚨" });
+            if (!response.ok) throw new Error("Failed");
+            toast.error("🚨 SOS DISPATCHED TO POLICE!", { icon: "🚨" });
             notifySync();
             fetchRequests();
         } catch (err) {
-            setError(err.message);
-            toast.error(err.message || "Failed to escalate emergency");
+            toast.error("SOS failed");
         } finally {
             setLoading(false);
         }
     };
 
     const handleDeleteRequest = async (requestId) => {
-        if (typeof window !== "undefined" && !window.confirm("Are you sure you want to delete this request?")) return;
+        if (!window.confirm("Delete this request?")) return;
 
         setLoading(true);
-        setMessage("");
-        setError("");
-
         try {
-            const response = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL}/requests/${requestId}`,
-                {
-                    method: "DELETE",
-                    headers: {
-                        Authorization: `Bearer ${token}`
-                    }
-                }
-            );
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data?.error?.message || "Failed to delete request");
-            }
-
-            const deleteMsg = "Assistance request deleted successfully.";
-            setMessage(deleteMsg);
-            toast.success(deleteMsg);
+            await fetch(`${process.env.NEXT_PUBLIC_API_URL}/requests/${requestId}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            toast.success("Deleted");
             notifySync();
             fetchRequests();
         } catch (err) {
-            setError(err.message);
-            toast.error(err.message || "Failed to delete request");
+            toast.error("Delete failed");
         } finally {
             setLoading(false);
         }
     };
 
-    const handleLogout = () => {
-        if (typeof window !== "undefined" && "speechSynthesis" in window) {
-            window.speechSynthesis.cancel();
-        }
-        localStorage.removeItem("agronex_token");
-        localStorage.removeItem("agronex_role");
-        localStorage.removeItem("agronex_user");
-        router.push("/");
-    };
-
     return (
-        <main className="min-h-screen bg-slate-950 text-white">
-            {/* Top Navigation */}
-            <nav className="glass-panel border-b border-slate-800/80 sticky top-0 z-30">
-                <div className="max-w-6xl mx-auto px-4 py-3 sm:px-6 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
-                            <Heart className="w-5 h-5 text-emerald-400" />
-                        </div>
-                        <div>
-                            <h1 className="text-lg font-extrabold tracking-tight">
-                                AgroNex <span className="text-emerald-400">Sahayak</span>
-                            </h1>
-                        </div>
+        <main className="max-w-5xl mx-auto px-3 py-3 sm:px-4 sm:py-5 space-y-3.5">
+            {/* Compact Top Header Bar */}
+            <div className="p-3 sm:p-4 rounded-2xl bg-slate-900/90 border border-emerald-500/30 flex flex-wrap items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">
+                        <Heart className="w-4 h-4" />
                     </div>
-
-                    <div className="flex items-center gap-4">
-                        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs text-slate-300">
-                            <User className="w-3.5 h-3.5 text-emerald-400" />
-                            <span>{user.name || "Senior"}</span>
-                        </div>
-
+                    <div>
+                        <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-1.5">
+                            Senior: {user.name || "Senior"}
+                        </h2>
                         <button
-                            onClick={handleLogout}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                            type="button"
+                            onClick={fetchGpsLocation}
+                            className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium flex items-center gap-1"
                         >
-                            <LogOut className="w-3.5 h-3.5" />
-                            <span>Logout</span>
+                            <Navigation className="w-3 h-3" />
+                            <span>{gpsLocation.locality}</span>
                         </button>
                     </div>
                 </div>
-            </nav>
 
-            <div className="max-w-6xl mx-auto px-4 py-6 sm:px-6 sm:py-8">
-
-                {/* Welcome Header */}
-                <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div>
-                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 mb-2">
-                            <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-                            <span className="text-xs font-semibold text-emerald-300 uppercase tracking-wider">
-                                Multilingual Speech Recognition (English & ಕನ್ನಡ)
-                            </span>
-                        </div>
-                        <h2 className="text-2xl sm:text-3xl font-extrabold text-white">
-                            Welcome back, {user.name || "Senior"}
-                        </h2>
-                        <p className="text-sm text-slate-400 mt-1">
-                            Speak your request naturally in English or Kannada to alert local volunteers.
-                        </p>
-                    </div>
-
+                <div className="flex items-center gap-2">
                     <button
+                        type="button"
                         onClick={fetchRequests}
                         disabled={refreshing}
-                        className="self-start sm:self-auto flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs text-slate-300 hover:text-white transition"
+                        className="p-2 sm:px-3 sm:py-1.5 rounded-lg bg-slate-800 text-xs font-semibold text-slate-300 hover:text-white border border-slate-700 transition"
                     >
                         <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
-                        <span>Refresh Status</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => {
+                            const active = requests.find(r => r.status !== "COMPLETED");
+                            if (active) handleEmergency(active._id);
+                            else toast.warn("No active requests to escalate");
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-black shadow-md shadow-red-500/30 transition animate-pulse"
+                    >
+                        <Siren className="w-4 h-4" />
+                        <span>EMERGENCY SOS</span>
                     </button>
                 </div>
+            </div>
 
-                {/* Status Messages */}
-                {message && (
-                    <div className="mb-6 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-300 flex items-center gap-3">
-                        <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-                        <span>{message}</span>
-                    </div>
-                )}
+            {/* Compact Section Tabs */}
+            <div className="flex items-center gap-1.5 p-1 bg-slate-900/90 border border-slate-800 rounded-xl text-xs">
+                <button
+                    type="button"
+                    onClick={() => setActiveNavSection("ALL")}
+                    className={`flex-1 py-1.5 px-2 rounded-lg font-bold transition ${
+                        activeNavSection === "ALL" ? "bg-emerald-500 text-slate-950" : "text-slate-400 hover:text-white"
+                    }`}
+                >
+                    All
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setActiveNavSection("INPUT")}
+                    className={`flex-1 py-1.5 px-2 rounded-lg font-bold transition ${
+                        activeNavSection === "INPUT" ? "bg-emerald-500 text-slate-950" : "text-slate-400 hover:text-white"
+                    }`}
+                >
+                    New Request
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setActiveNavSection("HISTORY")}
+                    className={`flex-1 py-1.5 px-2 rounded-lg font-bold transition ${
+                        activeNavSection === "HISTORY" ? "bg-emerald-500 text-slate-950" : "text-slate-400 hover:text-white"
+                    }`}
+                >
+                    History ({requests.length})
+                </button>
+            </div>
 
-                {error && (
-                    <div className="mb-6 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300 flex items-center gap-3">
-                        <ShieldAlert className="w-5 h-5 text-red-400 shrink-0" />
-                    </div>
-                )}
+            {/* Main Grid */}
+            <div className={`grid gap-3.5 ${activeNavSection === "ALL" ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1 max-w-xl mx-auto"}`}>
 
-                {/* Real-Time GPS Location Detector Banner */}
-                <div className="mb-6 p-4 rounded-2xl bg-slate-900/90 border border-emerald-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg shadow-emerald-500/5">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0">
-                            <Navigation className="w-5 h-5 text-emerald-400 animate-pulse" />
-                        </div>
-                        <div>
-                            <div className="flex items-center gap-2">
-                                <span className="text-xs font-extrabold uppercase tracking-wider text-slate-200">Senior Real-Time GPS Location</span>
-                                <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold">
-                                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                                    Live Tracking Active
-                                </span>
-                            </div>
-                            <p className="text-xs text-slate-300 font-medium mt-0.5">
-                                📍 {gpsLocation.locality} <span className="text-emerald-400 font-mono text-[11px] font-semibold">({gpsLocation.lat.toFixed(4)}° N, {gpsLocation.lng.toFixed(4)}° E)</span>
-                            </p>
-                        </div>
-                    </div>
-
-                    <button
-                        type="button"
-                        onClick={fetchGpsLocation}
-                        disabled={gpsLocation.loading}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition shrink-0 disabled:opacity-50"
-                    >
-                        <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${gpsLocation.loading ? "animate-spin" : ""}`} />
-                        <span>{gpsLocation.loading ? "Locating..." : "Refresh Live GPS Pin"}</span>
-                    </button>
-                </div>
-
-                {/* Senior Domain Navigation Tabs */}
-                <div className="flex flex-wrap items-center gap-2 p-1.5 bg-slate-900/90 border border-slate-800 rounded-2xl mb-8 shadow-inner">
-                    <button
-                        type="button"
-                        onClick={() => setActiveNavSection("ALL")}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                            activeNavSection === "ALL"
-                                ? "bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20"
-                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
-                        }`}
-                    >
-                        <Sparkles className="w-4 h-4" />
-                        <span>All Sections</span>
-                    </button>
-
-                    <button
-                        type="button"
-                        onClick={() => setActiveNavSection("INPUT")}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                            activeNavSection === "INPUT"
-                                ? "bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20"
-                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
-                        }`}
-                    >
-                        <PlusCircle className="w-4 h-4" />
-                        <span>✍️ Input Section (New Request)</span>
-                    </button>
-
-                    <button
-                        type="button"
-                        onClick={() => setActiveNavSection("HISTORY")}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                            activeNavSection === "HISTORY"
-                                ? "bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20"
-                                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
-                        }`}
-                    >
-                        <Clock className="w-4 h-4" />
-                        <span>📜 Request History ({requests.length})</span>
-                    </button>
-                </div>
-
-                <div className={`grid gap-8 items-start ${activeNavSection === "ALL" ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1 max-w-md mx-auto"}`}>
-
-                    {/* Left Panel: Voice vs Text Request Submission */}
-                    {(activeNavSection === "ALL" || activeNavSection === "INPUT") && (
-                        <section className="glass-panel border border-slate-800 rounded-3xl p-6 sm:p-7 shadow-xl max-w-md mx-auto w-full h-fit">
-                        {/* Tab Switcher & Language Selector Header */}
-                        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-6">
-                            <div className="flex items-center gap-2 p-1 bg-slate-900 border border-slate-800 rounded-2xl flex-1">
-                                <button
-                                    type="button"
-                                    onClick={() => setActiveTab("VOICE")}
-                                    className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition-all ${
-                                        activeTab === "VOICE"
-                                            ? "bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20"
-                                            : "text-slate-400 hover:text-slate-200"
-                                    }`}
-                                >
-                                    <Mic className="w-4 h-4" />
-                                    <span>🎙️ Voice</span>
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={() => setActiveTab("TEXT")}
-                                    className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition-all ${
-                                        activeTab === "TEXT"
-                                            ? "bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20"
-                                            : "text-slate-400 hover:text-slate-200"
-                                    }`}
-                                >
-                                    <FileText className="w-4 h-4" />
-                                    <span>📝 Form</span>
-                                </button>
-                            </div>
+                {/* Left: Input (Voice or Form) */}
+                {(activeNavSection === "ALL" || activeNavSection === "INPUT") && (
+                    <section className="glass-panel border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-lg space-y-3.5">
+                        {/* Voice vs Form */}
+                        <div className="flex items-center gap-1 p-1 bg-slate-900 border border-slate-800 rounded-xl text-xs">
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab("VOICE")}
+                                className={`flex-1 py-1.5 rounded-lg font-bold transition flex items-center justify-center gap-1 ${
+                                    activeTab === "VOICE" ? "bg-emerald-500 text-slate-950" : "text-slate-400"
+                                }`}
+                            >
+                                <Mic className="w-3.5 h-3.5" />
+                                <span>Voice</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab("TEXT")}
+                                className={`flex-1 py-1.5 rounded-lg font-bold transition flex items-center justify-center gap-1 ${
+                                    activeTab === "TEXT" ? "bg-emerald-500 text-slate-950" : "text-slate-400"
+                                }`}
+                            >
+                                <FileText className="w-3.5 h-3.5" />
+                                <span>Form</span>
+                            </button>
                         </div>
 
                         {activeTab === "VOICE" ? (
-                            <div className="space-y-5">
-                                <div className="text-center py-3">
-                                    <div className="flex flex-wrap items-center justify-center gap-2 mb-4">
-                                        <div className="flex items-center justify-center gap-1.5 p-1 bg-slate-900 border border-slate-800 rounded-2xl">
-                                            <Globe className="w-3.5 h-3.5 text-slate-400 ml-1.5" />
-                                            <button
-                                                type="button"
-                                                onClick={() => setSelectedLang("en-IN")}
-                                                className={`py-1.5 px-2 rounded-xl text-xs font-semibold transition-all ${
-                                                    selectedLang === "en-IN"
-                                                        ? "bg-slate-800 text-white font-bold"
-                                                        : "text-slate-400 hover:text-slate-200"
-                                                }`}
-                                            >
-                                                EN
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setSelectedLang("kn-IN")}
-                                                className={`py-1.5 px-2 rounded-xl text-xs font-semibold transition-all ${
-                                                    selectedLang === "kn-IN"
-                                                        ? "bg-slate-800 text-emerald-400 font-bold"
-                                                        : "text-slate-400 hover:text-slate-200"
-                                                }`}
-                                            >
-                                                ಕನ್ನಡ
-                                            </button>
-                                        </div>
+                            <div className="text-center py-2 space-y-3">
+                                {/* Language Switch */}
+                                <div className="inline-flex items-center gap-1 p-1 bg-slate-900 border border-slate-800 rounded-xl text-xs">
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedLang("en-IN")}
+                                        className={`px-3 py-1 rounded-lg font-semibold ${selectedLang === "en-IN" ? "bg-slate-800 text-emerald-400" : "text-slate-400"}`}
+                                    >
+                                        English
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedLang("kn-IN")}
+                                        className={`px-3 py-1 rounded-lg font-semibold ${selectedLang === "kn-IN" ? "bg-slate-800 text-emerald-400" : "text-slate-400"}`}
+                                    >
+                                        ಕನ್ನಡ
+                                    </button>
+                                </div>
 
-                                        <button
-                                            type="button"
-                                            onClick={fetchGpsLocation}
-                                            className="flex items-center gap-1.5 py-1.5 px-3 rounded-2xl bg-slate-900 border border-slate-800 text-xs font-bold text-emerald-400 hover:text-emerald-300 transition shadow-sm"
-                                        >
-                                            <Navigation className="w-3.5 h-3.5 text-emerald-400" />
-                                            <span>📍 {gpsLocation.locality || "Autofill GPS"}</span>
-                                        </button>
-                                    </div>
-                                    <p className="text-xs text-slate-400 mb-5">
-                                        {selectedLang === "kn-IN" ? (
-                                            <>
-                                                ಮೈಕ್ರೋಫೋನ್ ಒತ್ತಿ ನಿಮ್ಮ ವಿನಂತಿಯನ್ನು ಹೇಳಿ (ಉದಾ: <em className="text-emerald-300">"ನನಗೆ ತುರ್ತಾಗಿ ಔಷಧಿ ಶಿರ್ವ ಹತ್ತಿರ ಬೇಕು"</em>)
-                                            </>
-                                        ) : (
-                                            <>
-                                                Tap microphone and describe what you need (e.g., <em className="text-slate-300">"I urgently need medicine picked up near Shirva"</em>)
-                                            </>
-                                        )}
-                                    </p>
+                                {/* Mic Button */}
+                                <div className="relative inline-block py-2">
+                                    {isListening && (
+                                        <>
+                                            <div className="soundwave-ripple" />
+                                            <div className="soundwave-ripple-2" />
+                                        </>
+                                    )}
 
-                                    {/* Big Voice Button */}
                                     <button
                                         type="button"
                                         onClick={isListening ? stopListening : startListening}
-                                        className={`w-28 h-28 mx-auto rounded-full flex flex-col items-center justify-center gap-2 transition-all duration-300 ${
+                                        className={`w-24 h-24 rounded-full flex flex-col items-center justify-center gap-1 transition-all ${
                                             isListening
-                                                ? "bg-red-500 text-white animate-pulse shadow-2xl shadow-red-500/40 border-4 border-red-400"
-                                                : "bg-gradient-to-tr from-emerald-500 to-teal-400 text-slate-950 hover:scale-105 shadow-xl shadow-emerald-500/20"
+                                                ? "bg-red-500 text-white shadow-xl shadow-red-500/50 scale-105"
+                                                : "bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/20 active:scale-95"
                                         }`}
                                     >
                                         {isListening ? (
                                             <>
-                                                <MicOff className="w-9 h-9" />
-                                                <span className="text-[10px] font-extrabold uppercase">Stop</span>
+                                                <MicOff className="w-8 h-8 animate-pulse" />
+                                                <span className="text-[10px] font-bold">Stop</span>
                                             </>
                                         ) : (
                                             <>
-                                                <Mic className="w-9 h-9" />
-                                                <span className="text-[10px] font-extrabold uppercase">
-                                                    {selectedLang === "kn-IN" ? "ಮಾತನಾಡಿ" : "Tap & Speak"}
+                                                <Mic className="w-8 h-8" />
+                                                <span className="text-[10px] font-bold">
+                                                    {selectedLang === "kn-IN" ? "ಮಾತನಾಡಿ" : "Speak"}
                                                 </span>
                                             </>
                                         )}
                                     </button>
-
-                                    {isListening && (
-                                        <p className="text-xs text-red-400 font-semibold mt-4 animate-bounce">
-                                            🎙️ {selectedLang === "kn-IN" ? "ಕೇಳಿಸಿಕೊಳ್ಳುತ್ತಿದ್ದೇವೆ... ಈಗ ಮಾತನಾಡಿ." : "Listening... Speak clearly now."}
-                                        </p>
-                                    )}
                                 </div>
 
-                                {/* Transcript Box */}
+                                {/* Transcript */}
                                 {transcript && (
-                                    <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800">
-                                        <div className="flex items-center justify-between mb-2">
-                                            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                                                {selectedLang === "kn-IN" ? "ಧ್ವನಿ ಪಠ್ಯ" : "Speech Transcript"}
-                                            </span>
+                                    <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-left text-xs space-y-2">
+                                        <div className="flex items-center justify-between text-slate-400 text-[11px]">
+                                            <span>Transcript</span>
                                             <button
                                                 type="button"
-                                                onClick={() => speakText(transcript, "raw-transcript")}
-                                                className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
+                                                onClick={() => speakText(transcript, "raw")}
+                                                className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
                                             >
-                                                <Volume2 className="w-3.5 h-3.5" />
-                                                <span>{selectedLang === "kn-IN" ? "ಆಲಿಸಿ" : "Listen"}</span>
+                                                <Volume2 className="w-3 h-3" />
+                                                <span>Listen</span>
                                             </button>
                                         </div>
-                                        <p className="text-sm text-white italic">"{transcript}"</p>
+                                        <p className="text-white italic font-medium">"{transcript}"</p>
 
                                         {!voiceConfirmCard && (
                                             <button
                                                 type="button"
                                                 onClick={handleParseVoice}
                                                 disabled={parsingVoice}
-                                                className="w-full mt-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl py-2.5 text-xs transition flex items-center justify-center gap-2 disabled:opacity-50"
+                                                className="w-full py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-lg text-xs transition flex items-center justify-center"
                                             >
                                                 {parsingVoice ? (
-                                                    <>
-                                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                                        <span>Processing...</span>
-                                                    </>
+                                                    <Loader size="inline" text="Processing..." />
                                                 ) : (
-                                                    <>
-                                                        <Sparkles className="w-4 h-4" />
-                                                        <span>{selectedLang === "kn-IN" ? "ವಿಶ್ಲೇಷಿಸಿ" : "Process Voice Request"}</span>
-                                                    </>
+                                                    "Process Request"
                                                 )}
                                             </button>
                                         )}
                                     </div>
                                 )}
 
-                                {/* Parsed Confirmation Card */}
+                                {/* Confirm Card */}
                                 {voiceConfirmCard && (
-                                    <div className="p-5 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-950 border border-emerald-500/40 glow-border-emerald space-y-4">
-                                        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                                            <div className="flex items-center gap-2">
-                                                <Sparkles className="w-4 h-4 text-emerald-400" />
-                                                <h4 className="text-sm font-bold text-white">Parsed Voice Request Card</h4>
-                                            </div>
-                                            <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
-                                                🎙️ {selectedLang === "kn-IN" ? "ಕನ್ನಡ VOICE" : "VOICE CHANNEL"}
-                                            </span>
+                                    <div className="p-3.5 rounded-xl bg-slate-900 border border-emerald-500/40 text-left space-y-2 text-xs">
+                                        <div className="flex items-center justify-between font-bold text-slate-200">
+                                            <span>Voice Request Card</span>
+                                            <span className="text-[10px] text-emerald-400">Ready</span>
                                         </div>
 
-                                        <div className="space-y-3">
-                                            <div>
-                                                <label className="block text-[11px] font-semibold text-slate-400 uppercase">Need</label>
-                                                <input
-                                                    type="text"
-                                                    value={voiceConfirmCard.need}
-                                                    onChange={(e) => setVoiceConfirmCard({ ...voiceConfirmCard, need: e.target.value })}
-                                                    className="w-full mt-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
-                                                />
-                                            </div>
+                                        <input
+                                            type="text"
+                                            value={voiceConfirmCard.need}
+                                            onChange={(e) => setVoiceConfirmCard({ ...voiceConfirmCard, need: e.target.value })}
+                                            className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-white"
+                                            placeholder="Need"
+                                        />
 
-                                            <div>
-                                                <div className="flex items-center justify-between mb-1">
-                                                    <label className="block text-[11px] font-semibold text-slate-400 uppercase">Location / Address</label>
-                                                    <button
-                                                        type="button"
-                                                        onClick={async () => {
-                                                            toast.info("📍 Fetching live GPS pin...");
-                                                            if (navigator.geolocation) {
-                                                                navigator.geolocation.getCurrentPosition(
-                                                                    async (pos) => {
-                                                                        const lat = pos.coords.latitude;
-                                                                        const lng = pos.coords.longitude;
-                                                                        let locName = `Location (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`;
-                                                                        try {
-                                                                            const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
-                                                                            const data = await res.json();
-                                                                            if (data && data.address) {
-                                                                                locName = data.address.suburb || data.address.village || data.address.town || data.address.city || locName;
-                                                                            }
-                                                                        } catch (e) {}
-                                                                        const fullLoc = `${locName} (${lat.toFixed(4)}°N, ${lng.toFixed(4)}°E)`;
-                                                                        setVoiceConfirmCard((prev) => ({ ...prev, location: fullLoc }));
-                                                                        toast.success(`📍 Live GPS Autofilled: ${locName}`);
-                                                                    },
-                                                                    () => {
-                                                                        setVoiceConfirmCard((prev) => ({ ...prev, location: location || "Live GPS Location" }));
-                                                                    }
-                                                                );
-                                                            }
-                                                        }}
-                                                        className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition"
-                                                    >
-                                                        <Navigation className="w-3 h-3 text-emerald-400" />
-                                                        <span>📍 Autofill Live GPS Pin</span>
-                                                    </button>
-                                                </div>
-                                                <div className="relative">
-                                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                                                        <MapPin className="w-3.5 h-3.5" />
-                                                    </div>
-                                                    <input
-                                                        type="text"
-                                                        value={voiceConfirmCard.location}
-                                                        onChange={(e) => setVoiceConfirmCard({ ...voiceConfirmCard, location: e.target.value })}
-                                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white"
-                                                    />
-                                                </div>
-                                            </div>
+                                        <input
+                                            type="text"
+                                            value={voiceConfirmCard.location}
+                                            onChange={(e) => setVoiceConfirmCard({ ...voiceConfirmCard, location: e.target.value })}
+                                            className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-white"
+                                            placeholder="Location"
+                                        />
 
-                                            <div>
-                                                <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Priority Level</label>
-                                                <select
-                                                    value={voiceConfirmCard.priority}
-                                                    onChange={(e) => setVoiceConfirmCard({ ...voiceConfirmCard, priority: e.target.value })}
-                                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
-                                                >
-                                                    <option value="ROUTINE">Routine</option>
-                                                    <option value="URGENT">Urgent</option>
-                                                    <option value="EMERGENCY">Emergency</option>
-                                                </select>
-                                            </div>
-                                        </div>
-
-                                        <div className="pt-2 flex flex-col sm:flex-row items-center gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => handleCreateRequest(null, { ...voiceConfirmCard, channel: "VOICE" })}
-                                                disabled={loading}
-                                                className="w-full sm:flex-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl py-3 text-xs transition flex items-center justify-center gap-2 disabled:opacity-50"
-                                            >
-                                                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                                                <span>Confirm & Submit Voice Request</span>
-                                            </button>
-
-                                            <button
-                                                type="button"
-                                                onClick={startListening}
-                                                className="w-full sm:w-auto px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-xl text-xs transition flex items-center justify-center gap-1.5"
-                                            >
-                                                <RotateCcw className="w-3.5 h-3.5" />
-                                                <span>Re-record</span>
-                                            </button>
-                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleCreateRequest(null, { ...voiceConfirmCard, channel: "VOICE" })}
+                                            disabled={loading}
+                                            className="w-full py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-lg text-xs transition flex items-center justify-center gap-1"
+                                        >
+                                            <Send className="w-3.5 h-3.5" />
+                                            <span>Send Voice Request</span>
+                                        </button>
                                     </div>
                                 )}
                             </div>
                         ) : (
-                            /* Manual Text Form */
-                            <form onSubmit={(e) => handleCreateRequest(e, { need, location, priority, channel: "TEXT" })} className="space-y-5">
+                            /* Manual Form */
+                            <form onSubmit={(e) => handleCreateRequest(e, { need, location, priority, channel: "TEXT" })} className="space-y-2.5 text-xs">
                                 <div>
-                                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">
-                                        What do you need assistance with?
-                                    </label>
+                                    <label className="block font-bold text-slate-400 mb-1">Assistance Need</label>
                                     <input
                                         type="text"
                                         value={need}
                                         onChange={(e) => setNeed(e.target.value)}
-                                        placeholder="e.g. Medicine pickup, grocery buying"
+                                        placeholder="e.g. Medicine pickup"
                                         required
-                                        className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-3.5 text-sm text-white placeholder-slate-500 outline-none focus:border-emerald-500 transition-all"
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
                                     />
                                 </div>
 
                                 <div>
-                                    <div className="flex items-center justify-between mb-2">
-                                        <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
-                                            Location / Address
-                                        </label>
+                                    <div className="flex items-center justify-between mb-1">
+                                        <label className="font-bold text-slate-400">Location</label>
                                         <button
                                             type="button"
                                             onClick={fetchGpsLocation}
-                                            className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 transition"
+                                            className="text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold"
                                         >
-                                            <Navigation className="w-3 h-3 text-emerald-400" />
-                                            📍 Autofill Live GPS Pin
+                                            Autofill GPS
                                         </button>
                                     </div>
-                                    <div className="relative">
-                                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                                            <MapPin className="w-4 h-4" />
-                                        </div>
-                                        <input
-                                            type="text"
-                                            value={location}
-                                            onChange={(e) => setLocation(e.target.value)}
-                                            placeholder="e.g. Shirva, Main Street"
-                                            required
-                                            className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-10 pr-4 py-3.5 text-sm text-white placeholder-slate-500 outline-none focus:border-emerald-500 transition-all"
-                                        />
-                                    </div>
+                                    <input
+                                        type="text"
+                                        value={location}
+                                        onChange={(e) => setLocation(e.target.value)}
+                                        placeholder="Address"
+                                        required
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white"
+                                    />
                                 </div>
 
                                 <div>
-                                    <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">
-                                        Priority Level
-                                    </label>
-                                    <div className="grid grid-cols-3 gap-2">
-                                        {[
-                                            { value: "ROUTINE", label: "Routine" },
-                                            { value: "URGENT", label: "Urgent" },
-                                            { value: "EMERGENCY", label: "Emergency" }
-                                        ].map((item) => (
+                                    <label className="block font-bold text-slate-400 mb-1">Priority</label>
+                                    <div className="grid grid-cols-3 gap-1.5">
+                                        {["ROUTINE", "URGENT", "EMERGENCY"].map((p) => (
                                             <button
-                                                key={item.value}
+                                                key={p}
                                                 type="button"
-                                                onClick={() => setPriority(item.value)}
-                                                className={`p-3 rounded-xl border text-center transition-all ${
-                                                    priority === item.value
-                                                        ? item.value === "EMERGENCY"
-                                                            ? "bg-red-500/20 border-red-500 text-red-300 font-bold"
-                                                            : item.value === "URGENT"
-                                                            ? "bg-amber-500/20 border-amber-500 text-amber-300 font-bold"
-                                                            : "bg-emerald-500/20 border-emerald-500 text-emerald-300 font-bold"
-                                                        : "bg-slate-950/60 border-slate-800 text-slate-400 hover:bg-slate-900"
+                                                onClick={() => setPriority(p)}
+                                                className={`py-1.5 rounded-lg border text-center font-bold text-xs ${
+                                                    priority === p
+                                                        ? p === "EMERGENCY"
+                                                            ? "bg-red-500/20 border-red-500 text-red-300"
+                                                            : "bg-emerald-500 text-slate-950 border-emerald-500"
+                                                        : "bg-slate-950 border-slate-800 text-slate-400"
                                                 }`}
                                             >
-                                                <div className="text-xs">{item.label}</div>
+                                                {p}
                                             </button>
                                         ))}
                                     </div>
                                 </div>
 
-                                 <button
+                                <button
                                     type="submit"
                                     disabled={loading}
-                                    className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold rounded-xl py-3.5 shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                    className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs transition mt-1"
                                 >
-                                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <HeartHandshake className="w-5 h-5" />}
-                                    <span>Submit Manual Text Request</span>
+                                    {loading ? "Submitting..." : "Submit Request"}
                                 </button>
                             </form>
                         )}
                     </section>
-                    )}
+                )}
 
-                    {/* Right Panel: Request History & Read-Aloud Accessibility */}
-                    {(activeNavSection === "ALL" || activeNavSection === "HISTORY") && (
-                    <section className="glass-panel border border-slate-800 rounded-3xl p-6 sm:p-7 shadow-xl">
-                        <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800/80">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center">
-                                    <Clock className="w-5 h-5 text-blue-400" />
-                                </div>
-                                <div>
-                                    <h3 className="text-lg font-bold text-white">My Requests & History</h3>
-                                </div>
-                            </div>
-
-                            <span className="px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs text-slate-300 font-semibold">
-                                {requests.length} Requests
+                {/* Right: History */}
+                {(activeNavSection === "ALL" || activeNavSection === "HISTORY") && (
+                    <section className="glass-panel border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-lg space-y-3">
+                        <div className="flex items-center justify-between pb-2 border-b border-slate-800 text-xs">
+                            <span className="font-bold text-white flex items-center gap-1.5">
+                                <Clock className="w-3.5 h-3.5 text-blue-400" /> My Requests
                             </span>
+                            <span className="text-slate-400">{requests.length} Total</span>
                         </div>
 
                         {requests.length === 0 ? (
-                            <div className="text-center py-16 text-slate-500">
-                                <Heart className="w-12 h-12 mx-auto text-slate-700 mb-3" />
-                                <p className="text-sm">No assistance requests created yet.</p>
-                                <p className="text-xs text-slate-600 mt-1">Use the voice recorder or form to create one.</p>
-                            </div>
+                            <p className="text-center py-8 text-xs text-slate-500">No requests yet</p>
                         ) : (
-                            <div className="space-y-4 max-h-[540px] overflow-y-auto pr-1">
-                                {requests.map((request) => {
-                                    const formattedLoc = formatLocation(request.location);
-                                    const isKannada = selectedLang === "kn-IN";
-                                    const readAloudText = isKannada
-                                        ? `${request.need} ವಿನಂತಿ, ಸ್ಥಳ ${formattedLoc}, ಆಧ್ಯತೆ ${request.priority}, ಸ್ಥಿತಿ ${request.status}.`
-                                        : `Request for ${request.need}, located at ${formattedLoc}, priority ${request.priority}, status ${request.status}.`;
-                                    const isVoiceReq = request.channel === "VOICE";
-
-                                    return (
-                                        <div
-                                            key={request._id}
-                                            className="p-4 sm:p-5 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-slate-700 transition shadow-lg space-y-3"
-                                        >
-                                            {/* Top Header Row: Badges & Status */}
-                                            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                                                <div className="flex flex-wrap items-center gap-1.5">
-                                                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold flex items-center gap-1 shrink-0 ${
-                                                        isVoiceReq
-                                                            ? "bg-purple-500/20 text-purple-300 border border-purple-500/40"
-                                                            : "bg-slate-800 text-slate-400 border border-slate-700"
-                                                    }`}>
-                                                        {isVoiceReq ? "🎙️ VOICE" : "📝 TEXT"}
-                                                    </span>
-
-                                                    <span className={`px-2.5 py-0.5 rounded-md text-[11px] font-semibold shrink-0 ${getStatusStyle(request.priority)}`}>
-                                                        Priority: {request.priority}
-                                                    </span>
-                                                </div>
-
-                                                <span className={`text-xs px-3 py-0.5 rounded-full font-semibold shrink-0 ${getStatusStyle(request.status)}`}>
-                                                    Status: {request.status}
-                                                </span>
-                                            </div>
-
-                                            {/* Need Title & Location */}
-                                            <div className="space-y-1">
-                                                <h4 className="font-extrabold text-white text-base sm:text-lg leading-snug break-words">
-                                                    {request.need}
-                                                </h4>
-
-                                                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400 break-words pt-0.5">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                                                        <span className="font-medium text-slate-300">{formattedLoc}</span>
-                                                    </div>
-                                                    <span className="text-[11px] font-mono text-emerald-300 bg-emerald-500/15 px-2 py-0.5 rounded-full border border-emerald-500/30 font-semibold flex items-center gap-1">
-                                                        <Zap className="w-3 h-3 text-emerald-400" />
-                                                        {request.volunteerId ? "Volunteer Matched (~" : "Proximity (~"}{calculateDistance(request.location, "Shirva")} km)
-                                                    </span>
-                                                </div>
-                                            </div>
-
-                                            {/* Footer Row: Action Buttons */}
-                                            <div className="pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
-                                                <div className="flex items-center gap-2">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => speakText(readAloudText, request._id)}
-                                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition font-semibold"
-                                                    >
-                                                        <Volume2 className={`w-3.5 h-3.5 ${speakingId === request._id ? "text-emerald-400 animate-pulse" : "text-slate-400"}`} />
-                                                        <span>{speakingId === request._id ? "Speaking..." : "🔊 Read Aloud"}</span>
-                                                    </button>
-
-                                                    <DeleteButton
-                                                        onClick={() => handleDeleteRequest(request._id)}
-                                                        disabled={loading}
-                                                        title="Delete Request"
-                                                    />
-                                                </div>
-
-                                                {request.status !== "COMPLETED" && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleEmergency(request._id)}
-                                                        disabled={loading}
-                                                        className="flex items-center justify-center gap-1.5 border border-red-500/40 bg-red-500/15 hover:bg-red-500/25 text-red-300 font-bold rounded-xl px-3 py-1.5 text-xs transition disabled:opacity-50"
-                                                    >
-                                                        <Siren className="w-3.5 h-3.5 text-red-400 animate-pulse" />
-                                                        <span>🚨 Escalate SOS</span>
-                                                    </button>
-                                                )}
-                                            </div>
+                            <div className="space-y-2.5 max-h-[460px] overflow-y-auto pr-1">
+                                {requests.map((req) => (
+                                    <div
+                                        key={req._id}
+                                        className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-slate-700 transition space-y-2 text-xs"
+                                    >
+                                        <div className="flex items-center justify-between gap-1.5">
+                                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${getStatusStyle(req.priority)}`}>
+                                                {req.priority}
+                                            </span>
+                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getStatusStyle(req.status)}`}>
+                                                {req.status}
+                                            </span>
                                         </div>
-                                    );
-                                })}
+
+                                        <div>
+                                            <h4 className="font-bold text-white text-sm">{req.need}</h4>
+                                            <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
+                                                <MapPin className="w-3 h-3 text-emerald-400" />
+                                                <span>{formatLocation(req.location)}</span>
+                                            </p>
+                                        </div>
+
+                                        <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-1.5">
+                                            <div className="flex items-center gap-1.5">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => speakText(`${req.need}, status ${req.status}`, req._id)}
+                                                    className="px-2 py-1 rounded-lg bg-slate-800 text-slate-300 hover:text-white flex items-center gap-1 text-[11px]"
+                                                >
+                                                    <Volume2 className="w-3 h-3" />
+                                                    <span>Speak</span>
+                                                </button>
+
+                                                <DeleteButton
+                                                    onClick={() => handleDeleteRequest(req._id)}
+                                                    disabled={loading}
+                                                    title="Delete"
+                                                />
+                                            </div>
+
+                                            {req.status !== "COMPLETED" && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleEmergency(req._id)}
+                                                    className="px-2.5 py-1 rounded-lg bg-red-500/20 text-red-300 border border-red-500/40 text-[11px] font-bold hover:bg-red-500/30"
+                                                >
+                                                    🚨 SOS
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
                         )}
                     </section>
-                    )}
-                </div>
+                )}
             </div>
-            <ToastContainer theme="dark" position="top-right" autoClose={3000} />
         </main>
     );
 }
