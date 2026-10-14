@@ -18,6 +18,15 @@ const geistMono = Geist_Mono({
 export const metadata = {
   title: "AgroNex Sahayak | Community & Senior Citizen Assistance",
   description: "AI-Powered Community Assistance & SOS Network for Senior Citizens, Volunteers, and Emergency Services",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icon.svg", type: "image/svg+xml" }
+    ],
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }
+    ]
+  }
 };
 
 export default function RootLayout({ children }) {
