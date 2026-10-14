@@ -289,14 +289,18 @@ export default function SeniorDashboard() {
         if (e) e.preventDefault();
 
         setLoading(true);
-        const reqNeed = customData ? customData.need : need;
-        const reqLocation = customData ? customData.location : location;
+        const reqNeed = (customData ? customData.need : need || "").trim();
+        const reqLocation = (customData ? customData.location : location || "").trim();
         const reqPriority = customData ? customData.priority : priority;
         const reqChannel = customData ? customData.channel : channel;
 
-        const resolvedText = typeof reqLocation === "string" && reqLocation.trim()
-            ? reqLocation.trim()
-            : (gpsLocation.locality || "Shirva, Udupi");
+        if (!reqNeed) {
+            setLoading(false);
+            toast.warn("Please enter what assistance you need");
+            return;
+        }
+
+        const resolvedText = reqLocation || (gpsLocation.locality || "Shirva, Udupi");
 
         const locationPayload = {
             locality: resolvedText,
@@ -423,10 +427,18 @@ export default function SeniorDashboard() {
 
                     <button
                         type="button"
-                        onClick={() => {
+                        onClick={async () => {
                             const active = requests.find(r => r.status !== "COMPLETED");
-                            if (active) handleEmergency(active._id);
-                            else toast.warn("No active requests to escalate");
+                            if (active) {
+                                handleEmergency(active._id);
+                            } else {
+                                await handleCreateRequest(null, {
+                                    need: "🚨 Immediate Medical / Security Emergency SOS",
+                                    location: gpsLocation.locality || "Shirva, Udupi",
+                                    priority: "EMERGENCY",
+                                    channel: "VOICE"
+                                });
+                            }
                         }}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-black shadow-md shadow-red-500/30 transition animate-pulse"
                     >

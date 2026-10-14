@@ -12,7 +12,8 @@ const userSchema = new mongoose.Schema(
             type: String,
             required: true,
             unique: true,
-            trim: true
+            trim: true,
+            match: [/^\d{10}$/, "Phone number must be exactly 10 digits"]
         },
 
         email: {

@@ -12,12 +12,15 @@ import {
   MapPin,
   Lock,
   ArrowRight,
-  Loader2,
   ShieldAlert,
   CheckCircle2,
   Heart,
-  Navigation
+  Navigation,
+  Eye,
+  EyeOff
 } from "lucide-react";
+import Loader from "@/components/Loader";
+import { getUserLocation } from "@/utils/geolocation";
 
 export default function Register() {
   const router = useRouter();
@@ -27,6 +30,9 @@ export default function Register() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [location, setLocation] = useState("");
   const [gpsLoading, setGpsLoading] = useState(false);
 
@@ -34,52 +40,83 @@ export default function Register() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
-  const fetchLiveLocation = () => {
+  const handlePhoneChange = (e) => {
+    const numericOnly = e.target.value.replace(/\D/g, "").slice(0, 10);
+    setPhone(numericOnly);
+    if (error) setError("");
+  };
+
+  const fetchLiveLocation = async () => {
     if (typeof window === "undefined" || !navigator.geolocation) {
-      toast.error("Geolocation not supported");
+      toast.warn("Geolocation is not supported by your browser");
       return;
     }
 
     setGpsLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude, longitude } = pos.coords;
-        let detected = `Location (${latitude.toFixed(4)}°N, ${longitude.toFixed(4)}°E)`;
-
-        try {
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
-          );
-          if (res.ok) {
-            const data = await res.json();
-            if (data && data.address) {
-              const a = data.address;
-              const place = a.suburb || a.village || a.town || a.city_district || a.city || "";
-              if (place) {
-                detected = `${place}, Shirva (${latitude.toFixed(4)}°N, ${longitude.toFixed(4)}°E)`;
-              }
-            }
-          }
-        } catch (e) {
-          console.warn(e);
-        }
-
-        setLocation(detected);
-        setGpsLoading(false);
-        toast.success("GPS Captured!");
-      },
-      () => {
-        setLocation("Shirva Main Street, Udupi");
-        setGpsLoading(false);
-      },
-      { timeout: 7000 }
-    );
+    try {
+      const geo = await getUserLocation();
+      const resolvedLocality = geo.displayName || geo.locality || "Shirva Main Street, Udupi";
+      setLocation(resolvedLocality);
+      toast.success(`📍 GPS Captured: ${geo.locality || "Shirva"}`);
+    } catch (err) {
+      toast.warn(err.message || "Could not read GPS location. Please enter manually.");
+      if (!location) setLocation("Shirva Main Street, Udupi");
+    } finally {
+      setGpsLoading(false);
+    }
   };
 
   const handleRegister = async (e) => {
     e.preventDefault();
 
+    const cleanName = name.trim();
+    const cleanPhone = phone.trim();
+    const cleanEmail = email.trim();
+    const cleanLocation = location.trim();
+
     setError("");
+
+    // Validate name
+    if (!cleanName || cleanName.length < 2) {
+      setError("Please enter your full name (at least 2 characters)");
+      toast.warn("Full name is required");
+      return;
+    }
+
+    // Validate phone edge case: exactly 10 digits
+    if (!/^\d{10}$/.test(cleanPhone)) {
+      setError("Mobile number must be exactly 10 digits");
+      toast.warn("10-digit mobile number is required");
+      return;
+    }
+
+    // Validate optional email
+    if (cleanEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setError("Please enter a valid email address");
+      toast.warn("Invalid email format");
+      return;
+    }
+
+    // Validate location for Senior
+    if (role === "SENIOR" && !cleanLocation) {
+      setError("Please provide your location or click Autofill GPS");
+      toast.warn("Location is required for senior citizen");
+      return;
+    }
+
+    // Validate password edge cases
+    if (!password || password.length < 6) {
+      setError("Password must be at least 6 characters long");
+      toast.warn("Password must be at least 6 characters");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError("Passwords do not match. Please re-enter.");
+      toast.warn("Passwords do not match");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -89,11 +126,11 @@ export default function Register() {
       };
 
       const body = {
-        name,
-        phone,
+        name: cleanName,
+        phone: cleanPhone,
         password,
-        ...(email ? { email } : {}),
-        ...(role === "SENIOR" ? { location: location || "Shirva Main Street" } : {})
+        ...(cleanEmail ? { email: cleanEmail } : {}),
+        ...(role === "SENIOR" ? { location: cleanLocation || "Shirva Main Street, Udupi" } : {})
       };
 
       const response = await fetch(
@@ -114,7 +151,7 @@ export default function Register() {
       }
 
       setSuccess(true);
-      toast.success("Account created!");
+      toast.success("Account created successfully!");
 
       setTimeout(() => {
         router.push("/");
@@ -199,21 +236,35 @@ export default function Register() {
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                Phone
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  Mobile Number
+                </label>
+                <span className={`text-[10px] font-mono font-semibold ${phone.length === 10 ? "text-emerald-400" : "text-slate-500"}`}>
+                  {phone.length}/10 digits
+                </span>
+              </div>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
                   <Phone className="w-3.5 h-3.5" />
                 </div>
                 <input
-                  type="text"
+                  type="tel"
+                  inputMode="numeric"
+                  pattern="[0-9]{10}"
+                  maxLength={10}
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="Mobile number"
+                  onChange={handlePhoneChange}
+                  placeholder="10-digit mobile number"
+                  autoComplete="tel"
                   required
-                  className="w-full bg-slate-950/80 border border-slate-800 focus:border-emerald-500 rounded-xl pl-9 pr-3 py-2 text-xs sm:text-sm text-white placeholder-slate-500 outline-none transition"
+                  className="w-full bg-slate-950/80 border border-slate-800 focus:border-emerald-500 rounded-xl pl-9 pr-9 py-2 text-xs sm:text-sm text-white placeholder-slate-500 outline-none transition"
                 />
+                {phone.length === 10 && (
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-emerald-400">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </div>
+                )}
               </div>
             </div>
 
@@ -230,6 +281,7 @@ export default function Register() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Email address"
+                  autoComplete="email"
                   className="w-full bg-slate-950/80 border border-slate-800 focus:border-emerald-500 rounded-xl pl-9 pr-3 py-2 text-xs sm:text-sm text-white placeholder-slate-500 outline-none transition"
                 />
               </div>
@@ -245,10 +297,10 @@ export default function Register() {
                     type="button"
                     onClick={fetchLiveLocation}
                     disabled={gpsLoading}
-                    className="flex items-center gap-1 text-[11px] font-bold text-emerald-400 hover:text-emerald-300"
+                    className="flex items-center gap-1 text-[11px] font-bold text-emerald-400 hover:text-emerald-300 transition"
                   >
-                    <Navigation className={`w-3 h-3 ${gpsLoading ? "animate-spin" : ""}`} />
-                    <span>{gpsLoading ? "Detecting..." : "Autofill GPS"}</span>
+                    <Navigation className={`w-3 h-3 ${gpsLoading ? "animate-spin text-amber-400" : ""}`} />
+                    <span>{gpsLoading ? "Detecting GPS..." : "Autofill GPS"}</span>
                   </button>
                 </div>
                 <div className="relative">
@@ -268,21 +320,86 @@ export default function Register() {
             )}
 
             <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                Password
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  Password
+                </label>
+                <span className="text-[10px] text-slate-500">Min. 6 chars</span>
+              </div>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
                   <Lock className="w-3.5 h-3.5" />
                 </div>
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Password"
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (error) setError("");
+                  }}
+                  placeholder="Create password"
+                  autoComplete="new-password"
                   required
-                  className="w-full bg-slate-950/80 border border-slate-800 focus:border-emerald-500 rounded-xl pl-9 pr-3 py-2 text-xs sm:text-sm text-white placeholder-slate-500 outline-none transition"
+                  className="w-full bg-slate-950/80 border border-slate-800 focus:border-emerald-500 rounded-xl pl-9 pr-10 py-2 text-xs sm:text-sm text-white placeholder-slate-500 outline-none transition"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white transition"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  title={showPassword ? "Hide password" : "Show password"}
+                  tabIndex={-1}
+                >
+                  {showPassword ? (
+                    <EyeOff className="w-4 h-4 text-emerald-400" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  Confirm Password
+                </label>
+                {confirmPassword && (
+                  <span className={`text-[10px] font-semibold ${password === confirmPassword ? "text-emerald-400" : "text-amber-400"}`}>
+                    {password === confirmPassword ? "✓ Matches" : "Must match"}
+                  </span>
+                )}
+              </div>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+                  <Lock className="w-3.5 h-3.5" />
+                </div>
+                <input
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(e) => {
+                    setConfirmPassword(e.target.value);
+                    if (error) setError("");
+                  }}
+                  placeholder="Re-enter password"
+                  autoComplete="new-password"
+                  required
+                  className="w-full bg-slate-950/80 border border-slate-800 focus:border-emerald-500 rounded-xl pl-9 pr-10 py-2 text-xs sm:text-sm text-white placeholder-slate-500 outline-none transition"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white transition"
+                  aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                  title={showConfirmPassword ? "Hide password" : "Show password"}
+                  tabIndex={-1}
+                >
+                  {showConfirmPassword ? (
+                    <EyeOff className="w-4 h-4 text-emerald-400" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
+                </button>
               </div>
             </div>
           </div>
@@ -297,7 +414,7 @@ export default function Register() {
           {success && (
             <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300 flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>Account created! Redirecting...</span>
+              <span>Account created! Redirecting to login...</span>
             </div>
           )}
 
@@ -307,10 +424,7 @@ export default function Register() {
             className="w-full bg-emerald-500 hover:bg-emerald-400 active:scale-[0.99] disabled:opacity-50 text-slate-950 font-extrabold text-xs sm:text-sm rounded-xl py-2.5 transition flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/15"
           >
             {loading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Registering...</span>
-              </>
+              <Loader size="inline" text="Registering..." />
             ) : (
               <>
                 <span>Register</span>

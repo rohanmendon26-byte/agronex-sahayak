@@ -14,7 +14,10 @@ import {
   Loader2,
   ShieldAlert,
   Heart,
-  Zap
+  Zap,
+  Eye,
+  EyeOff,
+  CheckCircle2
 } from "lucide-react";
 import Loader from "@/components/Loader";
 import { getUserLocation } from "@/utils/geolocation";
@@ -25,17 +28,49 @@ export default function Home() {
   const [role, setRole] = useState("SENIOR");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const handlePhoneChange = (e) => {
+    const numericOnly = e.target.value.replace(/\D/g, "").slice(0, 10);
+    setPhone(numericOnly);
+    if (error) setError("");
+  };
 
   const handleLogin = async (e, customCredentials = null) => {
     if (e) e.preventDefault();
 
-    const targetPhone = customCredentials ? customCredentials.phone : phone;
+    const targetPhone = customCredentials ? customCredentials.phone : phone.trim();
     const targetPassword = customCredentials ? customCredentials.password : password;
     const targetRole = customCredentials ? customCredentials.role : role;
 
     setError("");
+
+    // Validate 10-digit phone number edge case
+    if (!targetPhone) {
+      setError("Please enter your 10-digit mobile number");
+      toast.warn("Mobile number is required");
+      return;
+    }
+    if (!/^\d{10}$/.test(targetPhone)) {
+      setError("Phone number must be exactly 10 digits");
+      toast.warn("Phone number must be exactly 10 digits");
+      return;
+    }
+
+    // Validate password edge case
+    if (!targetPassword) {
+      setError("Please enter your password");
+      toast.warn("Password is required");
+      return;
+    }
+    if (targetPassword.length < 6) {
+      setError("Password must be at least 6 characters long");
+      toast.warn("Password must be at least 6 characters");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -215,40 +250,75 @@ export default function Home() {
 
           {/* Inputs */}
           <div>
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-              Phone
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                Mobile Number
+              </label>
+              <span className={`text-[10px] font-mono font-semibold ${phone.length === 10 ? "text-emerald-400" : "text-slate-500"}`}>
+                {phone.length}/10 digits
+              </span>
+            </div>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
                 <Phone className="w-3.5 h-3.5" />
               </div>
               <input
-                type="text"
+                type="tel"
+                inputMode="numeric"
+                pattern="[0-9]{10}"
+                maxLength={10}
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="Phone number"
+                onChange={handlePhoneChange}
+                placeholder="10-digit mobile number"
+                autoComplete="tel"
                 required
-                className="w-full bg-slate-950/80 border border-slate-800 focus:border-emerald-500 rounded-xl pl-9 pr-3 py-2 text-xs sm:text-sm text-white placeholder-slate-500 outline-none transition"
+                className="w-full bg-slate-950/80 border border-slate-800 focus:border-emerald-500 rounded-xl pl-9 pr-9 py-2 text-xs sm:text-sm text-white placeholder-slate-500 outline-none transition"
               />
+              {phone.length === 10 && (
+                <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-emerald-400">
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
+              )}
             </div>
           </div>
 
           <div>
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-              Password
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                Password
+              </label>
+              <span className="text-[10px] text-slate-500">Min. 6 chars</span>
+            </div>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
                 <Lock className="w-3.5 h-3.5" />
               </div>
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password"
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (error) setError("");
+                }}
+                placeholder="Enter password"
+                autoComplete="current-password"
                 required
-                className="w-full bg-slate-950/80 border border-slate-800 focus:border-emerald-500 rounded-xl pl-9 pr-3 py-2 text-xs sm:text-sm text-white placeholder-slate-500 outline-none transition"
+                className="w-full bg-slate-950/80 border border-slate-800 focus:border-emerald-500 rounded-xl pl-9 pr-10 py-2 text-xs sm:text-sm text-white placeholder-slate-500 outline-none transition"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-white transition"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                title={showPassword ? "Hide password" : "Show password"}
+                tabIndex={-1}
+              >
+                {showPassword ? (
+                  <EyeOff className="w-4 h-4 text-emerald-400" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
+              </button>
             </div>
           </div>
 

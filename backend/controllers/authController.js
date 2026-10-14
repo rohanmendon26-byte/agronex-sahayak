@@ -1,25 +1,61 @@
 const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const VolunteerProfile = require("../models/VolunteerProfile");
 const SeniorProfile = require("../models/SeniorProfile");
+
+// Robust phone & password validation helpers
+const validatePhone = (phone) => {
+    const cleaned = String(phone || "").trim().replace(/\D/g, "");
+    return /^\d{10}$/.test(cleaned) ? cleaned : null;
+};
+
+const validatePassword = (password) => {
+    return typeof password === "string" && password.trim().length >= 6;
+};
 
 const registerVolunteer = async (req, res) => {
     try {
         const { name, phone, email, password } = req.body;
 
+        const cleanName = String(name || "").trim();
+        const cleanPhone = validatePhone(phone);
+        const cleanPassword = String(password || "");
+        const cleanEmail = email ? String(email).trim().toLowerCase() : null;
+
         // Validate required fields
-        if (!name || !phone || !password) {
+        if (!cleanName || cleanName.length < 2) {
             return res.status(400).json({
                 success: false,
                 error: {
                     code: "INVALID_INPUT",
-                    message: "Name, phone and password are required"
+                    message: "Full name must be at least 2 characters long"
+                }
+            });
+        }
+
+        if (!cleanPhone) {
+            return res.status(400).json({
+                success: false,
+                error: {
+                    code: "INVALID_PHONE",
+                    message: "Phone number must be exactly 10 digits"
+                }
+            });
+        }
+
+        if (!validatePassword(cleanPassword)) {
+            return res.status(400).json({
+                success: false,
+                error: {
+                    code: "INVALID_PASSWORD",
+                    message: "Password must be at least 6 characters long"
                 }
             });
         }
 
         // Check if phone already exists
-        const existingPhone = await User.findOne({ phone });
+        const existingPhone = await User.findOne({ phone: cleanPhone });
 
         if (existingPhone) {
             return res.status(409).json({
@@ -32,8 +68,18 @@ const registerVolunteer = async (req, res) => {
         }
 
         // Check email only if provided
-        if (email) {
-            const existingEmail = await User.findOne({ email });
+        if (cleanEmail) {
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+                return res.status(400).json({
+                    success: false,
+                    error: {
+                        code: "INVALID_EMAIL",
+                        message: "Invalid email address format"
+                    }
+                });
+            }
+
+            const existingEmail = await User.findOne({ email: cleanEmail });
 
             if (existingEmail) {
                 return res.status(409).json({
@@ -47,13 +93,13 @@ const registerVolunteer = async (req, res) => {
         }
 
         // Hash password
-        const passwordHash = await bcrypt.hash(password, 10);
+        const passwordHash = await bcrypt.hash(cleanPassword, 10);
 
         // Create user
         const user = await User.create({
-            name,
-            phone,
-            email: email || undefined,
+            name: cleanName,
+            phone: cleanPhone,
+            email: cleanEmail || undefined,
             passwordHash,
             role: "VOLUNTEER"
         });
@@ -90,26 +136,59 @@ const registerVolunteer = async (req, res) => {
     }
 };
 
-const jwt = require("jsonwebtoken");
-
-
 const registerSenior = async (req, res) => {
     try {
         const { name, phone, email, password, location } = req.body;
 
+        const cleanName = String(name || "").trim();
+        const cleanPhone = validatePhone(phone);
+        const cleanPassword = String(password || "");
+        const cleanEmail = email ? String(email).trim().toLowerCase() : null;
+        const cleanLocation = String(location || "").trim();
+
         // Validate required fields
-        if (!name || !phone || !password || !location) {
+        if (!cleanName || cleanName.length < 2) {
             return res.status(400).json({
                 success: false,
                 error: {
                     code: "INVALID_INPUT",
-                    message: "Name, phone, password and location are required"
+                    message: "Full name must be at least 2 characters long"
+                }
+            });
+        }
+
+        if (!cleanPhone) {
+            return res.status(400).json({
+                success: false,
+                error: {
+                    code: "INVALID_PHONE",
+                    message: "Phone number must be exactly 10 digits"
+                }
+            });
+        }
+
+        if (!validatePassword(cleanPassword)) {
+            return res.status(400).json({
+                success: false,
+                error: {
+                    code: "INVALID_PASSWORD",
+                    message: "Password must be at least 6 characters long"
+                }
+            });
+        }
+
+        if (!cleanLocation) {
+            return res.status(400).json({
+                success: false,
+                error: {
+                    code: "INVALID_LOCATION",
+                    message: "Location is required for senior citizen"
                 }
             });
         }
 
         // Check phone
-        const existingPhone = await User.findOne({ phone });
+        const existingPhone = await User.findOne({ phone: cleanPhone });
 
         if (existingPhone) {
             return res.status(409).json({
@@ -122,8 +201,18 @@ const registerSenior = async (req, res) => {
         }
 
         // Check email
-        if (email) {
-            const existingEmail = await User.findOne({ email });
+        if (cleanEmail) {
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+                return res.status(400).json({
+                    success: false,
+                    error: {
+                        code: "INVALID_EMAIL",
+                        message: "Invalid email address format"
+                    }
+                });
+            }
+
+            const existingEmail = await User.findOne({ email: cleanEmail });
 
             if (existingEmail) {
                 return res.status(409).json({
@@ -137,13 +226,13 @@ const registerSenior = async (req, res) => {
         }
 
         // Hash password
-        const passwordHash = await bcrypt.hash(password, 10);
+        const passwordHash = await bcrypt.hash(cleanPassword, 10);
 
         // Create senior user
         const user = await User.create({
-            name,
-            phone,
-            email: email || undefined,
+            name: cleanName,
+            phone: cleanPhone,
+            email: cleanEmail || undefined,
             passwordHash,
             role: "SENIOR"
         });
@@ -151,7 +240,7 @@ const registerSenior = async (req, res) => {
         // Create senior profile
         await SeniorProfile.create({
             userId: user._id,
-            location
+            location: cleanLocation
         });
 
         return res.status(201).json({
@@ -179,23 +268,35 @@ const registerSenior = async (req, res) => {
     }
 };
 
-
 const loginSenior = async (req, res) => {
     try {
         const { phone, password } = req.body;
 
-        if (!phone || !password) {
+        const cleanPhone = validatePhone(phone);
+        const cleanPassword = String(password || "");
+
+        if (!cleanPhone) {
             return res.status(400).json({
                 success: false,
                 error: {
-                    code: "INVALID_INPUT",
-                    message: "Phone and password are required"
+                    code: "INVALID_PHONE",
+                    message: "Please enter a valid 10-digit phone number"
+                }
+            });
+        }
+
+        if (!validatePassword(cleanPassword)) {
+            return res.status(400).json({
+                success: false,
+                error: {
+                    code: "INVALID_PASSWORD",
+                    message: "Password must be at least 6 characters long"
                 }
             });
         }
 
         const user = await User.findOne({
-            phone,
+            phone: cleanPhone,
             role: "SENIOR"
         });
 
@@ -210,7 +311,7 @@ const loginSenior = async (req, res) => {
         }
 
         const isPasswordCorrect = await bcrypt.compare(
-            password,
+            cleanPassword,
             user.passwordHash
         );
 
@@ -263,24 +364,35 @@ const loginSenior = async (req, res) => {
     }
 };
 
-
 const loginVolunteer = async (req, res) => {
     try {
         const { phone, password } = req.body;
 
-        // Validate input
-        if (!phone || !password) {
+        const cleanPhone = validatePhone(phone);
+        const cleanPassword = String(password || "");
+
+        if (!cleanPhone) {
             return res.status(400).json({
                 success: false,
                 error: {
-                    code: "INVALID_INPUT",
-                    message: "Phone and password are required"
+                    code: "INVALID_PHONE",
+                    message: "Please enter a valid 10-digit phone number"
+                }
+            });
+        }
+
+        if (!validatePassword(cleanPassword)) {
+            return res.status(400).json({
+                success: false,
+                error: {
+                    code: "INVALID_PASSWORD",
+                    message: "Password must be at least 6 characters long"
                 }
             });
         }
 
         // Find volunteer
-        const user = await User.findOne({ phone });
+        const user = await User.findOne({ phone: cleanPhone });
 
         if (!user || user.role !== "VOLUNTEER") {
             return res.status(401).json({
@@ -294,7 +406,7 @@ const loginVolunteer = async (req, res) => {
 
         // Compare password
         const isPasswordCorrect = await bcrypt.compare(
-            password,
+            cleanPassword,
             user.passwordHash
         );
 
@@ -348,25 +460,36 @@ const loginVolunteer = async (req, res) => {
     }
 };
 
-
 const loginAdmin = async (req, res) => {
     try {
         const { phone, password } = req.body;
 
-        // Validate input
-        if (!phone || !password) {
+        const cleanPhone = validatePhone(phone);
+        const cleanPassword = String(password || "");
+
+        if (!cleanPhone) {
             return res.status(400).json({
                 success: false,
                 error: {
-                    code: "INVALID_INPUT",
-                    message: "Phone and password are required"
+                    code: "INVALID_PHONE",
+                    message: "Please enter a valid 10-digit phone number"
+                }
+            });
+        }
+
+        if (!validatePassword(cleanPassword)) {
+            return res.status(400).json({
+                success: false,
+                error: {
+                    code: "INVALID_PASSWORD",
+                    message: "Password must be at least 6 characters long"
                 }
             });
         }
 
         // Find admin
         const user = await User.findOne({
-            phone,
+            phone: cleanPhone,
             role: "POLICE_ADMIN"
         });
 
@@ -382,7 +505,7 @@ const loginAdmin = async (req, res) => {
 
         // Compare password
         const isPasswordCorrect = await bcrypt.compare(
-            password,
+            cleanPassword,
             user.passwordHash
         );
 
@@ -437,6 +560,8 @@ const loginAdmin = async (req, res) => {
 };
 
 module.exports = {
+    validatePhone,
+    validatePassword,
     registerVolunteer,
     loginVolunteer,
     loginAdmin,
