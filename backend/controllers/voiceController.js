@@ -190,7 +190,8 @@ const parseVoiceRequest = async (req, res) => {
             success: true,
             data: {
                 need: cleanedNeed,
-                location: detectedLocation || "Shirva",
+                detectedLocation: detectedLocation || null,
+                location: detectedLocation || null,
                 priority: priority,
                 rawTranscript: rawText,
                 language: language || "en-IN",

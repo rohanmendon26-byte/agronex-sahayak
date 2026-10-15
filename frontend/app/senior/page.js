@@ -130,7 +130,7 @@ export default function SeniorDashboard() {
     const fetchGpsLocation = async (isManualClick = false) => {
         if (typeof window === "undefined" || !navigator.geolocation) {
             if (isManualClick) toast.warn("Geolocation is not supported by your browser");
-            return;
+            return null;
         }
 
         setGpsLocation((prev) => ({ ...prev, loading: true }));
@@ -146,15 +146,25 @@ export default function SeniorDashboard() {
                 loading: false
             });
             setLocation(resolvedLocality);
-            setVoiceConfirmCard((prev) => (prev ? { ...prev, location: resolvedLocality } : prev));
+            setVoiceConfirmCard((prev) => (prev ? { 
+                ...prev, 
+                location: resolvedLocality,
+                lat: geo.lat,
+                lng: geo.lng,
+                city: geo.city,
+                state: geo.state,
+                isGpsAutoFilled: true
+            } : prev));
             if (isManualClick) {
                 toast.success(`📍 GPS detected: ${geo.locality}`);
             }
+            return geo;
         } catch (err) {
             setGpsLocation((prev) => ({ ...prev, loading: false }));
             if (isManualClick) {
                 toast.warn(err.message || "Could not read GPS location");
             }
+            return null;
         }
     };
 
@@ -236,6 +246,28 @@ export default function SeniorDashboard() {
 
         setParsingVoice(true);
         try {
+            // Proactively auto-fetch live GPS location if not already retrieved
+            let currentGeo = null;
+            if (!gpsLocation.lat || gpsLocation.locality === "Shirva, Udupi") {
+                try {
+                    currentGeo = await getUserLocation();
+                    if (currentGeo) {
+                        const resolvedLoc = currentGeo.displayName || currentGeo.locality;
+                        setGpsLocation({
+                            lat: currentGeo.lat,
+                            lng: currentGeo.lng,
+                            locality: resolvedLoc,
+                            city: currentGeo.city,
+                            state: currentGeo.state,
+                            loading: false
+                        });
+                        setLocation(resolvedLoc);
+                    }
+                } catch (e) {
+                    // Silently fall back to existing location
+                }
+            }
+
             const response = await fetch(
                 `${process.env.NEXT_PUBLIC_API_URL}/voice/parse-request`,
                 {
@@ -252,12 +284,19 @@ export default function SeniorDashboard() {
             if (!response.ok) throw new Error(data?.error?.message || "Parse failed");
 
             const parsed = data.data;
-            const parsedLoc = parsed.location || location || gpsLocation.locality || "Shirva, Udupi";
+            const spokenLoc = parsed.detectedLocation || (parsed.location && parsed.location !== "Shirva" ? parsed.location : null);
+            const activeGpsLoc = currentGeo ? (currentGeo.displayName || currentGeo.locality) : (gpsLocation.locality || location);
+            const finalLoc = spokenLoc || activeGpsLoc || "Shirva, Udupi";
 
             setVoiceConfirmCard({
                 need: parsed.need,
-                location: parsedLoc,
-                priority: parsed.priority || "ROUTINE"
+                location: finalLoc,
+                priority: parsed.priority || "ROUTINE",
+                lat: currentGeo ? currentGeo.lat : gpsLocation.lat,
+                lng: currentGeo ? currentGeo.lng : gpsLocation.lng,
+                city: currentGeo ? currentGeo.city : gpsLocation.city,
+                state: currentGeo ? currentGeo.state : gpsLocation.state,
+                isGpsAutoFilled: !spokenLoc
             });
 
             toast.success("Processed! Confirm below.");
@@ -304,10 +343,10 @@ export default function SeniorDashboard() {
 
         const locationPayload = {
             locality: resolvedText,
-            city: gpsLocation.city || "Udupi",
-            state: gpsLocation.state || "Karnataka",
-            lat: gpsLocation.lat || 13.2210,
-            lng: gpsLocation.lng || 74.8020
+            city: (customData && customData.city) || gpsLocation.city || "Udupi",
+            state: (customData && customData.state) || gpsLocation.state || "Karnataka",
+            lat: (customData && customData.lat) || gpsLocation.lat || 13.2210,
+            lng: (customData && customData.lng) || gpsLocation.lng || 74.8020
         };
 
         try {
@@ -598,33 +637,97 @@ export default function SeniorDashboard() {
 
                                 {/* Confirm Card */}
                                 {voiceConfirmCard && (
-                                    <div className="p-3.5 rounded-xl bg-slate-900 border border-emerald-500/40 text-left space-y-2 text-xs">
+                                    <div className="p-3.5 rounded-xl bg-slate-900 border border-emerald-500/40 text-left space-y-2.5 text-xs animate-in fade-in duration-300">
                                         <div className="flex items-center justify-between font-bold text-slate-200">
-                                            <span>Voice Request Card</span>
-                                            <span className="text-[10px] text-emerald-400">Ready</span>
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                                                <span>Voice Request Card</span>
+                                            </div>
+                                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold">
+                                                Ready to Send
+                                            </span>
                                         </div>
 
-                                        <input
-                                            type="text"
-                                            value={voiceConfirmCard.need}
-                                            onChange={(e) => setVoiceConfirmCard({ ...voiceConfirmCard, need: e.target.value })}
-                                            className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-white"
-                                            placeholder="Need"
-                                        />
+                                        {/* Detected Need */}
+                                        <div>
+                                            <label className="block text-[11px] font-bold text-slate-400 mb-1">
+                                                Detected Need
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={voiceConfirmCard.need}
+                                                onChange={(e) => setVoiceConfirmCard({ ...voiceConfirmCard, need: e.target.value })}
+                                                className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500/50 rounded-xl px-3 py-2 text-xs text-white outline-none transition"
+                                                placeholder="Need description"
+                                                required
+                                            />
+                                        </div>
 
-                                        <input
-                                            type="text"
-                                            value={voiceConfirmCard.location}
-                                            onChange={(e) => setVoiceConfirmCard({ ...voiceConfirmCard, location: e.target.value })}
-                                            className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-xs text-white"
-                                            placeholder="Location"
-                                        />
+                                        {/* Location with Automated GPS Feature */}
+                                        <div>
+                                            <div className="flex items-center justify-between mb-1">
+                                                <label className="text-[11px] font-bold text-slate-400 flex items-center gap-1.5">
+                                                    <span>Location</span>
+                                                    {voiceConfirmCard.isGpsAutoFilled && (
+                                                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-medium">
+                                                            📍 GPS Linked
+                                                        </span>
+                                                    )}
+                                                </label>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => fetchGpsLocation(true)}
+                                                    disabled={gpsLocation.loading}
+                                                    className="text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1 transition disabled:opacity-60"
+                                                    title="Autofill current GPS location into voice card"
+                                                >
+                                                    <Navigation className={`w-3 h-3 ${gpsLocation.loading ? "animate-spin text-amber-400" : ""}`} />
+                                                    <span>{gpsLocation.loading ? "Detecting GPS..." : "Auto-fill GPS"}</span>
+                                                </button>
+                                            </div>
+                                            <div className="relative">
+                                                <MapPin className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                                                <input
+                                                    type="text"
+                                                    value={voiceConfirmCard.location}
+                                                    onChange={(e) => setVoiceConfirmCard({ ...voiceConfirmCard, location: e.target.value, isGpsAutoFilled: false })}
+                                                    className="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500/50 rounded-xl pl-9 pr-3 py-2 text-xs text-white outline-none transition"
+                                                    placeholder="e.g. Shirva, Udupi"
+                                                    required
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Priority Selector */}
+                                        <div className="flex items-center justify-between pt-0.5">
+                                            <span className="text-[11px] font-bold text-slate-400">Priority:</span>
+                                            <div className="flex gap-1.5">
+                                                {["ROUTINE", "URGENT", "EMERGENCY"].map((lvl) => (
+                                                    <button
+                                                        key={lvl}
+                                                        type="button"
+                                                        onClick={() => setVoiceConfirmCard({ ...voiceConfirmCard, priority: lvl })}
+                                                        className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border transition ${
+                                                            voiceConfirmCard.priority === lvl
+                                                                ? lvl === "EMERGENCY"
+                                                                    ? "bg-red-500 text-white border-red-400"
+                                                                    : lvl === "URGENT"
+                                                                    ? "bg-amber-500 text-slate-950 border-amber-400"
+                                                                    : "bg-emerald-500 text-slate-950 border-emerald-400"
+                                                                : "bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700"
+                                                        }`}
+                                                    >
+                                                        {lvl}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
 
                                         <button
                                             type="button"
                                             onClick={() => handleCreateRequest(null, { ...voiceConfirmCard, channel: "VOICE" })}
                                             disabled={loading}
-                                            className="w-full py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-lg text-xs transition flex items-center justify-center gap-1"
+                                            className="w-full py-2.5 mt-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-500/20"
                                         >
                                             <Send className="w-3.5 h-3.5" />
                                             <span>Send Voice Request</span>
